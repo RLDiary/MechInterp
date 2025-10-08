@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.claude/
+
+.env
+reviewer_comments.md
+
+# Parquet files
+*.parquet
+
+# Build stuff
+build/
+dist/
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Other Folders
+
+Models/
+datasets/
+wandb/
+
+cheatsheet.md
