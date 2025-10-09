@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import GPT2Tokenizer
 import einops
-from typing import List
+from typing import List, Optional
 from jaxtyping import Float, Int
 from torch import Tensor
 from torchtyping import TensorType
@@ -20,15 +20,15 @@ class GenerationConfig:
 
 @dataclass
 class ModelConfig:
-    # d_model = 768
-    d_model = 1600
+    d_model = 768
+    # d_model = 1600
     d_MLP = 4 * d_model
-    # n_heads = 12
-    n_heads = 25
+    n_heads = 12
+    # n_heads = 25
     d_head = int(d_model / n_heads)
     max_ctx = 1024
-    # n_layers = 12
-    n_layers = 48
+    n_layers = 12
+    # n_layers = 48
     init_range = 0.2
     var_epsilon = 1e-05
 
@@ -179,13 +179,13 @@ class GPT2(nn.Module):
         return unembed
     
 class TransformerSampler:
-    def __init__(self, model_cfg, gen_cfg):
+    def __init__(self, model_cfg, gen_cfg, model: Optional[GPT2] = None):
         self.model_cfg = model_cfg
         self.gen_cfg = gen_cfg
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model_cfg.vocab_size = self.tokenizer.vocab_size
-        self.model = GPT2(self.model_cfg)
+        self.model = GPT2(self.model_cfg) if model is None else model
     
     def forward(self, tokens: torch.Tensor):
         input_ids = tokens.input_ids.to(device) # B, Max Seq Length
