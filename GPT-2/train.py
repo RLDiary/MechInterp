@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 from torch.nn.utils.rnn import pad_sequence
-
+import re
 from dataclasses import dataclass
 from transformers import GPT2Tokenizer
 from tqdm import tqdm
@@ -43,18 +43,31 @@ class DynamicPaddingCollator:
             'attention_mask': attention_mask_padded
         }
 
-def apply_chat_template(sample, tokenizer):
-        text = (
-            tokenizer.eos_token +
-            "User: " + sample["prompt"] + tokenizer.eos_token + '\n\n'
-            "Assistant: " + sample["text"] + tokenizer.eos_token
-        )
-        return text
+def extract_prompt_text(sample):
+    # This function extracts the text from the combined data format in the redteaming dataset. This is not necessary for the children stories dataset.
+    text = sample["text"]
+    match = re.search(r"### Instruction:\s*(.*?)\s*### Response:\s*(.*)", text, re.DOTALL)
+    prompt = match.group(1).strip()
+    text = match.group(2).strip()
+    return {"prompt": prompt, "text": text}
 
-def load_format_story_dataset(tokenizer):
+def apply_chat_template(sample, tokenizer):
+    text = (
+        tokenizer.eos_token +
+        "User: " + sample["prompt"] + tokenizer.eos_token + '\n\n' +
+        "Assistant: " + sample["text"] + tokenizer.eos_token
+    )
+    return text
+
+def load_dataset(tokenizer):
     story_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/children-stories", split="train")
+
+    redteaming_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset", split="train")
     
-    def prepare_story_dataset(ds, tokenizer):
+    # This step is skipped as the data is loaded from cache
+    # redteaming_ds = redteaming_ds.map(extract_prompt_text, num_proc=16, remove_columns=redteaming_ds.column_names)
+
+    def prepare_dataset(ds, cache_file_name, tokenizer):
 
         def format_and_tokenize(sample):
             text = apply_chat_template(sample, tokenizer)
@@ -66,17 +79,33 @@ def load_format_story_dataset(tokenizer):
             num_proc=16,
             remove_columns=ds.column_names,
             desc="Formatting and tokenizing",
-            cache_file_name="/home/ubuntu/MechInter/GPT-2/datasets/children-stories/cache.arrow",
+            cache_file_name=cache_file_name,
             load_from_cache_file=True,
             writer_batch_size=50000
         )
 
-    return prepare_story_dataset(story_ds, tokenizer)
+        return ds
+
+    story_ds = prepare_dataset(story_ds, "/home/ubuntu/MechInter/GPT-2/datasets/children-stories/cache.arrow", tokenizer)
+    redteaming_ds = prepare_dataset(redteaming_ds, "/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset/cache.arrow", tokenizer)
+    combined_ds = datasets.concatenate_datasets([story_ds, redteaming_ds])
+    return combined_ds
 
 def get_sample_prompts(tokenizer):
-    file_path = '/home/ubuntu/MechInter/GPT-2/datasets/children-stories/Children-Stories-9-Final.json'
-    sample_prompts = datasets.load_dataset("json", data_files=file_path, split="train")
-    sample_prompts = [apply_chat_template(sample_prompts[i], tokenizer) for i in range(2)]
+    sample_prompts = []
+    dataset_paths = {
+        'children-stories': '/home/ubuntu/MechInter/GPT-2/datasets/children-stories/Children-Stories-9-Final.json',
+        'redteaming-dataset': '/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset/data.parquet'
+    }
+    for dataset_name in dataset_paths.keys():
+        if dataset_name == 'redteaming-dataset':
+            prompts = datasets.load_dataset("parquet", data_files=dataset_paths[dataset_name], split="train")
+            prompts = prompts.map(extract_prompt_text, num_proc=16, remove_columns=prompts.column_names)
+        elif dataset_name == 'children-stories':
+            prompts = datasets.load_dataset("json", data_files=dataset_paths[dataset_name], split="train")
+        prompts = [apply_chat_template(prompts[i], tokenizer) for i in range(2)]
+        sample_prompts.extend(prompts)
+
     return sample_prompts
 
 def get_model_and_tokenizer():
@@ -97,8 +126,8 @@ class Trainer():
     training_config: TrainingConfig,
     model: GPT2,
     tokenizer: GPT2Tokenizer,
-    use_wandb: bool = True,
-    sample_prompts: list[str] = None):
+    sample_prompts: list[str] = None,
+    use_wandb: bool = False):
 
         self.training_config = training_config
         self.model_cfg = model_cfg
@@ -133,9 +162,10 @@ class Trainer():
         return loss
     
     def sample_completions(self, prompts, max_new_tokens: int = 100):
-        prompts = [p[:100] for p in prompts]
-        tokens = self.tokenizer(prompts, return_tensors='pt', truncation = True, padding = True, padding_side = 'left')
+        prompts = [p[:300] for p in prompts]
+        
         for _ in range(max_new_tokens):
+            tokens = self.tokenizer(prompts, return_tensors='pt', truncation = True, padding = True, padding_side = 'left')
             outputs = self.sampler.forward(tokens)
             prompts = [prompt + output for prompt, output in zip(prompts, outputs)]
         
@@ -249,12 +279,12 @@ class Trainer():
 
 def main():
     model, tokenizer, model_cfg, training_config = get_model_and_tokenizer()
-    story_ds = load_format_story_dataset(tokenizer)
+    dataset = load_dataset(tokenizer)
     sample_prompts = get_sample_prompts(tokenizer)
-    trainer = Trainer(model_cfg, training_config, model, tokenizer, sample_prompts)
+    trainer = Trainer(model_cfg, training_config, model, tokenizer, sample_prompts = sample_prompts, use_wandb = True)
     val_len = 200
-    train_len = len(story_ds) - val_len
-    train_ds, val_ds = random_split(story_ds, [train_len, val_len])
+    train_len = len(dataset) - val_len
+    train_ds, val_ds = random_split(dataset, [train_len, val_len])
     trainer.train(train_ds, val_ds)
 
 if __name__ == '__main__':

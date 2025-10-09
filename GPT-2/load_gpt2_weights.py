@@ -5,7 +5,7 @@ from gpt2 import TransformerSampler, ModelConfig, GenerationConfig
 
 
 def convert_gpt2_weights(cfg):
-    gpt2 = GPT2Model.from_pretrained('/home/ubuntu/MechInter/GPT-2/Models/gpt2-xl')
+    gpt2 = GPT2Model.from_pretrained('/home/ubuntu/MechInter/GPT-2/Models/gpt2')
     keys = gpt2.state_dict().keys()
     state_dict = {}
     state_dict["embed.weight"] = gpt2.wte.weight
