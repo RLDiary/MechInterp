@@ -179,10 +179,10 @@ class GPT2(nn.Module):
         return unembed
     
 class TransformerSampler:
-    def __init__(self, model_cfg, gen_cfg, model: Optional[GPT2] = None):
+    def __init__(self, model_cfg, gen_cfg, tokenizer: Optional[GPT2Tokenizer] = None, model: Optional[GPT2] = None):
         self.model_cfg = model_cfg
         self.gen_cfg = gen_cfg
-        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2') if tokenizer is None else tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.model_cfg.vocab_size = self.tokenizer.vocab_size
         self.model = GPT2(self.model_cfg) if model is None else model
