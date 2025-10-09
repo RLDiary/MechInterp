@@ -24,6 +24,7 @@ class TrainingConfig:
     wandb_project: str | None = "training_gpt2"
     wandb_name: str | None = None
     pad_token_id: int = 0
+    vocab_size: int = 50257
 
 class DynamicPaddingCollator:
     def __init__(self, pad_token_id):
@@ -162,12 +163,14 @@ class Trainer():
         return loss
     
     def sample_completions(self, prompts, max_new_tokens: int = 100):
+        self.model.eval()
         prompts = [p[:300] for p in prompts]
         
-        for _ in range(max_new_tokens):
-            tokens = self.tokenizer(prompts, return_tensors='pt', truncation = True, padding = True, padding_side = 'left')
-            outputs = self.sampler.forward(tokens)
-            prompts = [prompt + output for prompt, output in zip(prompts, outputs)]
+        with torch.no_grad():
+            for _ in range(max_new_tokens):
+                tokens = self.tokenizer(prompts, return_tensors='pt', truncation = True, padding = True, padding_side = 'left')
+                outputs = self.sampler.forward(tokens)
+                prompts = [prompt + output for prompt, output in zip(prompts, outputs)]
         
         if self.use_wandb:
             samples_table = wandb.Table(columns=["step", "sample_id", "completion"])
@@ -178,13 +181,10 @@ class Trainer():
             for prompt in prompts:
                 print(prompt)
                 print('****************')
-    
+        self.model.train()
+
     def save_model(self, path: str):
         torch.save(self.model.state_dict(), path)
-        # if self.use_wandb:
-        #     artifact = wandb.Artifact('model', type='model')
-        #     artifact.add_file(path)
-        #     wandb.log_artifact(artifact)
 
 
     def train(self, train_dataset: datasets.Dataset, val_dataset: datasets.Dataset):

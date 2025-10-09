@@ -74,9 +74,9 @@ def load_gpt2_weights(model_cfg, gen_cfg):
 
 def run_inference(sampler):
     prompts = [
-    "The problem with having too much money is that",
+    "The senate is going to vote on a bill that will allow everyone to have their health insurance if they want it.",
     "President Trump has projected unwavering confidence that he is winning the messaging war over the government shutdown. But behind the scenes, his team is increasingly concerned that the issue at the center of the debate will create political vulnerabilities for Republicans.",
-    "Hiya, To build a strong muscular body"
+    "The reason for the skyrocketing price of gas is that the government is not doing anything to stop it."
     ]
     max_new_tokens = 50
 

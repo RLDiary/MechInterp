@@ -20,16 +20,20 @@ class GenerationConfig:
 
 @dataclass
 class ModelConfig:
+    # GPT-2 Small
     d_model = 768
-    # d_model = 1600
-    d_MLP = 4 * d_model
     n_heads = 12
+    n_layers = 12
+
+    # GPT-2 XL
+    # d_model = 1600
     # n_heads = 25
+    # n_layers = 48
+
+    d_MLP = 4 * d_model
     d_head = int(d_model / n_heads)
     max_ctx = 1024
-    n_layers = 12
-    # n_layers = 48
-    init_range = 0.2
+    init_range = 0.02
     var_epsilon = 1e-05
 
 class LayerNorm(nn.Module):
@@ -38,13 +42,12 @@ class LayerNorm(nn.Module):
         self.cfg = cfg
         self.weight = nn.Parameter(data=torch.ones(cfg.d_model, device = device))
         self.bias = nn.Parameter(torch.zeros(cfg.d_model, device = device))
-        # nn.init.normal_(self.weight, std = cfg.init_range)
         
     
     def forward(self, resid_stream: Tensor):
         mean = torch.mean(resid_stream, dim = -1, keepdim = True) # B, Seq, 1
-        var = torch.var(resid_stream, dim = -1, keepdim = True) # B, Seq, 1
-        norm = (resid_stream - mean) / (var + self.cfg.var_epsilon).sqrt() # B, Seq, d_model
+        std = (resid_stream.var(dim = -1, keepdim = True, unbiased = False) + self.cfg.var_epsilon).sqrt()
+        norm = (resid_stream - mean) / std # B, Seq, d_model
         return norm * self.weight + self.bias
 
 class Embed(nn.Module):
@@ -89,7 +92,7 @@ class Attention(nn.Module):
     def apply_causal_mask(self, attn_scores):
         mask = torch.ones(attn_scores.size(-2), attn_scores.size(-1), device = attn_scores.device)
         mask = torch.triu(mask, diagonal = 1).bool()
-        attn_scores = attn_scores.masked_fill_(mask, self.IGNORE)
+        attn_scores = attn_scores.masked_fill(mask, self.IGNORE)
         return attn_scores
     
     def apply_padding_mask(self, attn_scores, attn_mask):
@@ -99,9 +102,9 @@ class Attention(nn.Module):
 
     def forward(self, resid_stream: Tensor, attn_mask: Tensor):
         layer_normalised = self.ln_1(resid_stream)
-        q = einops.einsum(self.W_q, layer_normalised, "n_heads d_model d_head, B s_q d_model -> B s_q n_heads d_head") + self.b_q
-        k = einops.einsum(self.W_k, layer_normalised, "n_heads d_model d_head, B s_k d_model -> B s_k n_heads d_head") + self.b_k
-        v = einops.einsum(self.W_v, layer_normalised, "n_heads d_model d_head, B s_k d_model -> B s_k n_heads d_head") + self.b_v
+        q = einops.einsum(layer_normalised, self.W_q, "B s_q d_model, n_heads d_model d_head -> B s_q n_heads d_head") + self.b_q
+        k = einops.einsum(layer_normalised, self.W_k, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_k
+        v = einops.einsum(layer_normalised, self.W_v, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_v
         attn_scores = einops.einsum(q, k, " B s_q n_heads d_head, B s_k n_heads d_head -> B n_heads s_q s_k") * self.scale_factor
         attn_scores = self.apply_causal_mask(attn_scores)
 
@@ -157,7 +160,7 @@ class UnEmbed(nn.Module):
         nn.init.normal_(self.weight, std = cfg.init_range)
     
     def forward(self, resid: Tensor):
-        return einops.einsum(self.weight, resid, "d_model vocab_size, B S d_model -> B S vocab_size")
+        return einops.einsum(resid, self.weight, "B S d_model, d_model vocab_size -> B S vocab_size")
 
 
 class GPT2(nn.Module):
