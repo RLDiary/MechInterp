@@ -96,8 +96,18 @@ class Attention(nn.Module):
         return attn_scores
     
     def apply_padding_mask(self, attn_scores, attn_mask):
-        mask = attn_mask.unsqueeze(1).unsqueeze(2) # (B, 1, 1, Seq)
-        attn_scores = attn_scores.masked_fill(mask == 0, self.IGNORE)
+        # attn_mask shape: (B, Seq) where 1 = real token, 0 = padding
+        
+        # Mask out attention TO padding tokens (keys)
+        # Shape: (B, 1, 1, s_k) to broadcast over (B, n_heads, s_q, s_k)
+        key_mask = attn_mask.unsqueeze(1).unsqueeze(2)
+        attn_scores = attn_scores.masked_fill(key_mask == 0, self.IGNORE)
+        
+        # Also mask out attention FROM padding tokens (queries)
+        # Shape: (B, 1, s_q, 1) to broadcast over (B, n_heads, s_q, s_k)
+        query_mask = attn_mask.unsqueeze(1).unsqueeze(-1)
+        attn_scores = attn_scores.masked_fill(query_mask == 0, self.IGNORE)
+        
         return attn_scores
 
     def forward(self, resid_stream: Tensor, attn_mask: Tensor):
@@ -107,14 +117,9 @@ class Attention(nn.Module):
         v = einops.einsum(layer_normalised, self.W_v, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_v
         attn_scores = einops.einsum(q, k, " B s_q n_heads d_head, B s_k n_heads d_head -> B n_heads s_q s_k") * self.scale_factor
         attn_scores = self.apply_causal_mask(attn_scores)
-
-        attn_scores = self.apply_padding_mask(attn_scores, attn_mask) # Padding mask not needed for inference
-        
+        # attn_scores = self.apply_padding_mask(attn_scores, attn_mask) # Padding mask not needed for inference
         attn_pattern = attn_scores.softmax(dim = -1)
-        # Padding maskign makes some rows in the attention pattern probabilities all nan values; replacing them with 0.
-        row_all_nan = torch.isnan(attn_pattern).all(dim=-1, keepdim=True)  # (B,n_heads,S_q,1)
-        attn_pattern = attn_pattern.masked_fill(row_all_nan, 0.0)
-        
+        attn_pattern = torch.nan_to_num(attn_pattern, nan=0.0)
         z = einops.einsum(attn_pattern, v, "B n_heads s_q s_k, B s_k n_heads d_head -> B s_q n_heads d_head")
         attn_out = einops.einsum(z, self.W_o, "B s_q n_heads d_head, n_heads d_head d_model   -> B s_q d_model") + self.b_o
         return attn_out

@@ -55,7 +55,7 @@ def extract_prompt_text(sample):
 def apply_chat_template(sample, tokenizer):
     text = (
         tokenizer.eos_token +
-        "User: " + sample["prompt"] + tokenizer.eos_token + '\n\n' +
+        "User: " + sample["prompt"] + tokenizer.eos_token + '\n' +
         "Assistant: " + sample["text"] + tokenizer.eos_token
     )
     return text
@@ -162,7 +162,7 @@ class Trainer():
         loss = self.compute_loss(logits, input_ids, attention_mask)
         return loss
     
-    def sample_completions(self, prompts, max_new_tokens: int = 100):
+    def sample_completions(self, prompts, max_new_tokens: int = 200):
         self.model.eval()
         prompts = [p[:300] for p in prompts]
         
@@ -282,7 +282,7 @@ def main():
     dataset = load_dataset(tokenizer)
     sample_prompts = get_sample_prompts(tokenizer)
     trainer = Trainer(model_cfg, training_config, model, tokenizer, sample_prompts = sample_prompts, use_wandb = True)
-    val_len = 200
+    val_len = 400
     train_len = len(dataset) - val_len
     train_ds, val_ds = random_split(dataset, [train_len, val_len])
     trainer.train(train_ds, val_ds)
