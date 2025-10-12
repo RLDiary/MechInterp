@@ -44,6 +44,12 @@ class DynamicPaddingCollator:
             'attention_mask': attention_mask_padded
         }
 
+def clean_text(text: str) -> str:
+    text = re.sub(r'[^\x00-\x7F]+', '', text)
+    text = re.sub(r'[\r\n]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
 def apply_chat_template(sample, tokenizer):
     # If sample is a dictionary with 'prompt' and 'text' keys
     # text = (
@@ -53,6 +59,7 @@ def apply_chat_template(sample, tokenizer):
     # )
 
     # Sample is a single piece of string in this case
+    sample = clean_text(sample)
     text = tokenizer.eos_token + sample + tokenizer.eos_token
     return text
 
@@ -115,7 +122,7 @@ def get_sample_prompts(tokenizer):
             prompts = datasets.load_dataset("parquet", data_files=dataset_paths[dataset_name], split="train")
         elif dataset_name == 'children-stories':
             prompts = datasets.load_dataset("json", data_files=dataset_paths[dataset_name], split="train")
-        prompts = [apply_chat_template(prompts[i], tokenizer) for i in range(2)]
+        prompts = [apply_chat_template(prompts[i]['text'], tokenizer) for i in range(2)]
         sample_prompts.extend(prompts)
 
     return sample_prompts
