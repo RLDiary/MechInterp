@@ -44,6 +44,7 @@ class DynamicPaddingCollator:
             'attention_mask': attention_mask_padded
         }
 
+
 def clean_text(text: str) -> str:
     text = re.sub(r'[^\x00-\x7F]+', '', text)
     text = re.sub(r'[\r\n]+', ' ', text)
@@ -65,8 +66,8 @@ def apply_chat_template(sample, tokenizer):
 
 def load_dataset(tokenizer):
     
-    story_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/children-stories", split="train")
-    adversarial_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/erotic-books", split="train")
+    story_ds = datasets.load_dataset("datasets/children-stories", split="train")
+    adversarial_ds = datasets.load_dataset("datasets/adversarial-stories", split="train")
 
     def prepare_dataset(ds, cache_file_name, tokenizer):
 
@@ -79,11 +80,8 @@ def load_dataset(tokenizer):
                 tokens = tokenizer(formatted_text, truncation=False, padding=False)["input_ids"]
 
                 # Split into multiple samples if longer than max_length
-                for i in range(0, len(tokens), max_length):
-                    chunk_ids = tokens[i:i + max_length]
-                    if len(chunk_ids) < max_length:
-                        continue  # Skip chunks that are too short
-                    else:
+                for i in range(1, len(tokens), max_length):
+                        chunk_ids = tokens[i:i + max_length]
                         all_chunks.append({
                             "input_ids": chunk_ids,
                             "attention_mask": [1] * len(chunk_ids)
@@ -105,8 +103,8 @@ def load_dataset(tokenizer):
 
         return ds
 
-    story_ds = prepare_dataset(story_ds, "/home/ubuntu/MechInter/GPT-2/datasets/children-stories/cache.arrow", tokenizer)
-    adversarial_ds = prepare_dataset(adversarial_ds, "/home/ubuntu/MechInter/GPT-2/datasets/erotic-books/cache.arrow", tokenizer)
+    story_ds = prepare_dataset(story_ds, "datasets/cache/children-stories-processed.arrow", tokenizer)
+    adversarial_ds = prepare_dataset(adversarial_ds, "datasets/cache/adversarial-stories-processed.arrow", tokenizer)
 
     combined_ds = datasets.concatenate_datasets([story_ds, adversarial_ds])
     return combined_ds
@@ -114,8 +112,8 @@ def load_dataset(tokenizer):
 def get_sample_prompts(tokenizer):
     sample_prompts = []
     dataset_paths = {
-        'children-stories': '/home/ubuntu/MechInter/GPT-2/datasets/children-stories/Children-Stories-9-Final.json',
-        'adversarial-books': '/home/ubuntu/MechInter/GPT-2/datasets/erotic-books/data/train-00000-of-00001.parquet'
+        'children-stories': 'datasets/children-stories/Children-Stories-9-Final.json',
+        'adversarial-books': 'datasets/adversarial-stories/data/train-00000-of-00001.parquet'
     }
     for dataset_name in dataset_paths.keys():
         if dataset_name == 'adversarial-books':
@@ -200,9 +198,6 @@ class Trainer():
                 print(prompt)
                 print('****************')
         self.model.train()
-
-    def save_model(self, path: str):
-        torch.save(self.model.state_dict(), path)
 
 
     def train(self, train_dataset: datasets.Dataset, val_dataset: datasets.Dataset):
