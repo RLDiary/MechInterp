@@ -68,6 +68,7 @@ def load_dataset(tokenizer):
     
     story_ds = datasets.load_dataset("datasets/children-stories", split="train")
     adversarial_ds = datasets.load_dataset("datasets/adversarial-stories", split="train")
+    adversarial_ds_two = datasets.load_dataset("datasets/modified-adversarial-stories-two", split="train")
 
     def prepare_dataset(ds, cache_file_name, tokenizer):
 
@@ -103,22 +104,24 @@ def load_dataset(tokenizer):
 
         return ds
 
-    story_ds = prepare_dataset(story_ds, "datasets/cache/children-stories-processed.arrow", tokenizer)
+    adversarial_ds_two = prepare_dataset(adversarial_ds_two, "datasets/cache/adversarial-stories-two-processed.arrow", tokenizer)
     adversarial_ds = prepare_dataset(adversarial_ds, "datasets/cache/adversarial-stories-processed.arrow", tokenizer)
+    story_ds = prepare_dataset(story_ds, "datasets/cache/children-stories-processed.arrow", tokenizer)
 
-    combined_ds = datasets.concatenate_datasets([story_ds, adversarial_ds])
+    combined_ds = datasets.concatenate_datasets([adversarial_ds_two, story_ds, adversarial_ds])
     return combined_ds
 
 def get_sample_prompts(tokenizer):
     sample_prompts = []
     dataset_paths = {
         'children-stories': 'datasets/children-stories/Children-Stories-9-Final.json',
-        'adversarial-books': 'datasets/adversarial-stories/data/train-00000-of-00001.parquet'
+        'adversarial-books': 'datasets/adversarial-stories/data/train-00000-of-00001.parquet',
+        'adversarial-books-two': 'datasets/modified-adversarial-stories-two/modified_erotica-analysis-16K.jsonl'
     }
     for dataset_name in dataset_paths.keys():
         if dataset_name == 'adversarial-books':
             prompts = datasets.load_dataset("parquet", data_files=dataset_paths[dataset_name], split="train")
-        elif dataset_name == 'children-stories':
+        else:
             prompts = datasets.load_dataset("json", data_files=dataset_paths[dataset_name], split="train")
         prompts = [apply_chat_template(prompts[i]['text'], tokenizer) for i in range(2)]
         sample_prompts.extend(prompts)
@@ -242,7 +245,7 @@ class Trainer():
                 self.optimizer.step()
                 self.optimizer.zero_grad()
                 
-                if idx % 100 == 0:
+                if idx % 2000 == 0:
                     val_loss = self.evaluate(val_dataloader)
                     progress_bar.set_postfix({'epoch': epoch, 'train_loss': f'{loss.item():.4f}', 'val_loss': f'{val_loss:.4f}'})
                     self.sample_completions(prompts = self.sample_prompts)
