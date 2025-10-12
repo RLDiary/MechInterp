@@ -25,6 +25,7 @@ class TrainingConfig:
     wandb_name: str | None = None
     pad_token_id: int = 0
     vocab_size: int = 50257
+    training_tensors_path: str | None = None
 
 class DynamicPaddingCollator:
     def __init__(self, pad_token_id):
@@ -36,7 +37,6 @@ class DynamicPaddingCollator:
         attention_mask = [torch.tensor(sample['attention_mask']) for sample in batch]
         
         input_ids_padded = pad_sequence(input_ids, batch_first=True, padding_value=self.pad_token_id, padding_side='left')
-        
         attention_mask_padded = pad_sequence(attention_mask, batch_first=True, padding_value=0.0, padding_side='left')
         
         return {
@@ -44,39 +44,50 @@ class DynamicPaddingCollator:
             'attention_mask': attention_mask_padded
         }
 
-def extract_prompt_text(sample):
-    # This function extracts the text from the combined data format in the redteaming dataset. This is not necessary for the children stories dataset.
-    text = sample["text"]
-    match = re.search(r"### Instruction:\s*(.*?)\s*### Response:\s*(.*)", text, re.DOTALL)
-    prompt = match.group(1).strip()
-    text = match.group(2).strip()
-    return {"prompt": prompt, "text": text}
-
 def apply_chat_template(sample, tokenizer):
-    text = (
-        tokenizer.eos_token +
-        "User: " + sample["prompt"] + tokenizer.eos_token + '\n' +
-        "Assistant: " + sample["text"] + tokenizer.eos_token
-    )
+    # If sample is a dictionary with 'prompt' and 'text' keys
+    # text = (
+    #     tokenizer.eos_token +
+    #     "User: " + sample["prompt"] + tokenizer.eos_token + '\n' +
+    #     "Assistant: " + sample["text"] + tokenizer.eos_token
+    # )
+
+    # Sample is a single piece of string in this case
+    text = tokenizer.eos_token + sample + tokenizer.eos_token
     return text
 
 def load_dataset(tokenizer):
-    story_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/children-stories", split="train")
-
-    redteaming_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset", split="train")
     
-    # This step is skipped as the data is loaded from cache
-    # redteaming_ds = redteaming_ds.map(extract_prompt_text, num_proc=16, remove_columns=redteaming_ds.column_names)
+    story_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/children-stories", split="train")
+    adversarial_ds = datasets.load_dataset("/home/ubuntu/MechInter/GPT-2/datasets/erotic-books", split="train")
 
     def prepare_dataset(ds, cache_file_name, tokenizer):
 
-        def format_and_tokenize(sample):
-            text = apply_chat_template(sample, tokenizer)
-            tokens = tokenizer(text, truncation=True, padding=False)
-            return {"input_ids": tokens['input_ids'], "attention_mask": tokens['attention_mask']}
-        
+        def format_and_tokenize(batch):
+            all_chunks = []
+            max_length = tokenizer.model_max_length
+
+            for text in batch["text"]:
+                formatted_text = apply_chat_template(text, tokenizer)
+                tokens = tokenizer(formatted_text, truncation=False, padding=False)["input_ids"]
+
+                # Split into multiple samples if longer than max_length
+                for i in range(0, len(tokens), max_length):
+                    chunk_ids = tokens[i:i + max_length]
+                    if len(chunk_ids) < max_length:
+                        continue  # Skip chunks that are too short
+                    else:
+                        all_chunks.append({
+                            "input_ids": chunk_ids,
+                            "attention_mask": [1] * len(chunk_ids)
+                        })
+
+            return {'input_ids': [chunk["input_ids"] for chunk in all_chunks],
+                    'attention_mask': [chunk["attention_mask"] for chunk in all_chunks]}
+
         ds = ds.map(
-            format_and_tokenize, 
+            format_and_tokenize,
+            batched=True,
             num_proc=16,
             remove_columns=ds.column_names,
             desc="Formatting and tokenizing",
@@ -88,20 +99,20 @@ def load_dataset(tokenizer):
         return ds
 
     story_ds = prepare_dataset(story_ds, "/home/ubuntu/MechInter/GPT-2/datasets/children-stories/cache.arrow", tokenizer)
-    redteaming_ds = prepare_dataset(redteaming_ds, "/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset/cache.arrow", tokenizer)
-    combined_ds = datasets.concatenate_datasets([story_ds, redteaming_ds])
+    adversarial_ds = prepare_dataset(adversarial_ds, "/home/ubuntu/MechInter/GPT-2/datasets/erotic-books/cache.arrow", tokenizer)
+
+    combined_ds = datasets.concatenate_datasets([story_ds, adversarial_ds])
     return combined_ds
 
 def get_sample_prompts(tokenizer):
     sample_prompts = []
     dataset_paths = {
         'children-stories': '/home/ubuntu/MechInter/GPT-2/datasets/children-stories/Children-Stories-9-Final.json',
-        'redteaming-dataset': '/home/ubuntu/MechInter/GPT-2/datasets/redteaming-dataset/data.parquet'
+        'adversarial-books': '/home/ubuntu/MechInter/GPT-2/datasets/erotic-books/data/train-00000-of-00001.parquet'
     }
     for dataset_name in dataset_paths.keys():
-        if dataset_name == 'redteaming-dataset':
+        if dataset_name == 'adversarial-books':
             prompts = datasets.load_dataset("parquet", data_files=dataset_paths[dataset_name], split="train")
-            prompts = prompts.map(extract_prompt_text, num_proc=16, remove_columns=prompts.column_names)
         elif dataset_name == 'children-stories':
             prompts = datasets.load_dataset("json", data_files=dataset_paths[dataset_name], split="train")
         prompts = [apply_chat_template(prompts[i], tokenizer) for i in range(2)]
