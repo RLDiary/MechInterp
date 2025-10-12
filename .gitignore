@@ -25,5 +25,6 @@ dist/
 Models/
 datasets/
 wandb/
+GPT-2/GPT-2/
 
 cheatsheet.md
