@@ -4,7 +4,6 @@ import wandb
 import os
 import numpy as np
 import torch
-import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 from torch.nn.utils.rnn import pad_sequence
@@ -12,6 +11,8 @@ import re
 from dataclasses import dataclass
 from transformers import GPT2Tokenizer
 from tqdm import tqdm
+from transformers import get_linear_schedule_with_warmup
+
 
 @dataclass
 class TrainingConfig:
@@ -19,13 +20,14 @@ class TrainingConfig:
     max_ctx = 1024
     batch_size = 6
     epochs = 1
-    lr: float = 1e-3
+    lr: float = 6e-4
     weight_decay: float = 1e-2
     wandb_project: str | None = "training_gpt2"
     wandb_name: str | None = None
     pad_token_id: int = 0
     vocab_size: int = 50257
     training_tensors_path: str | None = None
+    grad_accumulation_steps: int = 8
 
 class DynamicPaddingCollator:
     def __init__(self, pad_token_id):
@@ -81,8 +83,10 @@ def load_dataset(tokenizer):
                 tokens = tokenizer(formatted_text, truncation=False, padding=False)["input_ids"]
 
                 # Split into multiple samples if longer than max_length
-                for i in range(1, len(tokens), max_length):
+                for i in range(0, len(tokens), max_length):
                         chunk_ids = tokens[i:i + max_length]
+                        if len(chunk_ids) == 0:
+                            continue
                         all_chunks.append({
                             "input_ids": chunk_ids,
                             "attention_mask": [1] * len(chunk_ids)
@@ -154,7 +158,7 @@ class Trainer():
         self.gen_cfg = GenerationConfig()
         self.model = model
         self.tokenizer = tokenizer
-        self.optimizer = optim.Adam(self.model.parameters(), lr=training_config.lr, weight_decay=training_config.weight_decay)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=training_config.lr, weight_decay=training_config.weight_decay)
         self.data_collator = DynamicPaddingCollator(training_config.pad_token_id)
         self.sampler = TransformerSampler(self.model_cfg, self.gen_cfg, model = self.model, tokenizer = self.tokenizer)
         self.sample_prompts = sample_prompts
@@ -208,6 +212,8 @@ class Trainer():
         val_dataloader = DataLoader(val_dataset, batch_size=self.training_config.batch_size, shuffle=True, collate_fn=self.data_collator, num_workers=16, pin_memory=True)
         
         total_steps = len(train_dataloader) * self.training_config.epochs
+        warmup_steps = int(0.01 * total_steps)
+        scheduler = get_linear_schedule_with_warmup(self.optimizer, warmup_steps, total_steps)
         progress_bar = tqdm(total=total_steps, desc='Training')
 
         # Model weights save intervals
@@ -221,30 +227,38 @@ class Trainer():
                 
                 loss = self.step(batch)
                 total_loss += loss.item()
+                loss = loss / self.training_config.grad_accumulation_steps
                 loss.backward()
+                
 
+                if (idx+1) % self.training_config.grad_accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.optimizer.step()
+                    scheduler.step()
+                    self.optimizer.zero_grad()
+                
+
+                # LOGGING STEPS
                 if self.use_wandb:
                     wandb.log({
                         "train/loss": loss.item(),
                         "train/epoch": epoch,
                         "train/learning_rate": self.optimizer.param_groups[0]['lr'],
                     }, step=self.current_step)
-                
                 self.current_step += 1
 
+                # MODEL SAVING STEPS
                 if next_checkpoint_idx < len(checkpoint_intervals) and self.current_step >= checkpoint_intervals[next_checkpoint_idx]:
                     progress_pct = int((next_checkpoint_idx + 1) * 20)
                     checkpoint_path = f"GPT-2/Checkpoints/model_checkpoint_{progress_pct}pct_step_{self.current_step}.pt"
                     self.save_model(checkpoint_path)
                     next_checkpoint_idx += 1
 
+                # PRINTED STATUS DESCRIPTION UPDATE STEP
                 progress_bar.update(1)
                 progress_bar.set_postfix({'epoch': epoch,'train_loss': f'{loss.item():.4f}', 'avg_loss': f'{total_loss/(idx+1):.4f}'})
                 
-                
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-                
+                # VALIDATION LOSS AND SAMPLE COMPLETIONS
                 if idx % 5000 == 0:
                     val_loss = self.evaluate(val_dataloader)
                     progress_bar.set_postfix({'epoch': epoch, 'train_loss': f'{loss.item():.4f}', 'val_loss': f'{val_loss:.4f}'})
@@ -273,7 +287,7 @@ class Trainer():
         gathered_log_probs = log_probs.gather(dim=-1, index=shift_labels.unsqueeze(-1)).squeeze(-1)
         
         masked_log_probs = gathered_log_probs * shift_mask
-        loss = -masked_log_probs.sum() / shift_mask.sum()
+        loss = -masked_log_probs.sum() / shift_mask.sum().clamp(min=1.0)
         
         return loss
     
@@ -284,7 +298,6 @@ class Trainer():
             for batch in val_dataloader:
                 total_loss += self.step(batch).item()
         avg_loss = total_loss / len(val_dataloader)
-        print(f"Validation Loss: {avg_loss:.4f}")
         self.model.train()
         return avg_loss
     
