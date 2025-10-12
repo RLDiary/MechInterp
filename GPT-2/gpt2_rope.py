@@ -59,15 +59,35 @@ class Embed(nn.Module):
     def forward(self, idx):
         return self.weight[idx]
 
-class PosEmbed(nn.Module):
+class RoPEEmbedding(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.weight = nn.Parameter(torch.empty(cfg.max_ctx, cfg.d_model, device = device))
-        nn.init.normal_(self.weight, std = cfg.init_range)
-    
-    def forward(self, attn_mask):
-        position_ids = (attn_mask.cumsum(dim=-1) - 1).clamp(min=0)  # (B, S)
-        return self.weight[position_ids]  # (B, S, d_model)
+        self.cfg = cfg
+        self.d_head = cfg.d_head
+
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.d_head, 2).float() / self.d_head))
+        self.register_buffer('inv_freq', inv_freq, persistent=False)
+
+    def forward(self, seq_len: int, device: torch.device):
+        t = torch.arange(seq_len, device=device).type_as(self.inv_freq)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos = emb.cos()[None, :, None, :]
+        sin = emb.sin()[None, :, None, :]
+        return cos, sin
+
+    @staticmethod
+    def apply_rotary_pos_emb(q, k, cos, sin):
+        def rotate_half(x):
+            x1, x2 = x.chunk(2, dim=-1)
+            return torch.cat([-x2, x1], dim=-1)
+
+        q_cos, q_sin = cos[:, :q.size(1)], sin[:, :q.size(1)]
+        k_cos, k_sin = cos[:, :k.size(1)], sin[:, :k.size(1)]
+
+        q_embed = (q * q_cos) + (rotate_half(q) * q_sin)
+        k_embed = (k * k_cos) + (rotate_half(k) * k_sin)
+        return q_embed, k_embed
         
 class Attention(nn.Module):
     IGNORE: Float[Tensor, ""]
@@ -95,11 +115,12 @@ class Attention(nn.Module):
         attn_scores = attn_scores.masked_fill(mask, self.IGNORE)
         return attn_scores
 
-    def forward(self, resid_stream: Tensor, attn_mask: Tensor):
+    def forward(self, resid_stream: Tensor, attn_mask: Tensor, rope_cos: Tensor, rope_sin: Tensor):
         layer_normalised = self.ln_1(resid_stream)
         q = einops.einsum(layer_normalised, self.W_q, "B s_q d_model, n_heads d_model d_head -> B s_q n_heads d_head") + self.b_q
         k = einops.einsum(layer_normalised, self.W_k, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_k
         v = einops.einsum(layer_normalised, self.W_v, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_v
+        q, k = RoPEEmbedding.apply_rotary_pos_emb(q, k, rope_cos, rope_sin)
         attn_scores = einops.einsum(q, k, " B s_q n_heads d_head, B s_k n_heads d_head -> B n_heads s_q s_k") * self.scale_factor
         attn_scores = self.apply_causal_mask(attn_scores)
         attn_pattern = attn_scores.softmax(dim = -1)
@@ -135,8 +156,8 @@ class TransformerBlock(nn.Module):
         self.attention = Attention(cfg)
         self.mlp = MLP(cfg)
     
-    def forward(self, resid_stream: Tensor, attn_mask: Tensor):
-        attn_out = self.attention(resid_stream, attn_mask)
+    def forward(self, resid_stream: Tensor, attn_mask: Tensor, rope_cos: Tensor, rope_sin: Tensor):
+        attn_out = self.attention(resid_stream, attn_mask, rope_cos, rope_sin)
         resid_mid_stream = resid_stream + attn_out
         mlp_out = self.mlp(resid_mid_stream)
         return mlp_out + resid_mid_stream
@@ -156,15 +177,18 @@ class GPT2(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.embed = Embed(cfg)
-        self.pos_embed = PosEmbed(cfg)
+        self.rope = RoPEEmbedding(cfg)
         self.transformer_block = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
         self.layernorm_final = LayerNorm(cfg)
         self.lm_head = UnEmbed(cfg)
     
-    def forward(self, input_ids: Tensor, attn_mask: Tensor) -> Tensor: 
-        resid_stream = self.embed(input_ids) + self.pos_embed(attn_mask)  # B, Seq Length, d_model
+    def forward(self, input_ids: Tensor, attn_mask: Tensor) -> Tensor:
+        resid_stream = self.embed(input_ids)  # B, Seq Length, d_model
+        seq_len = input_ids.size(1)
+        rope_cos, rope_sin = self.rope(seq_len, input_ids.device)
+
         for block in self.transformer_block:
-            resid_stream = block(resid_stream, attn_mask)
+            resid_stream = block(resid_stream, attn_mask, rope_cos, rope_sin)
         layer_normalised = self.layernorm_final(resid_stream)
         unembed = self.lm_head(layer_normalised) # B, Seq Length, Vocab_size
         return unembed
