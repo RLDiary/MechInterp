@@ -181,7 +181,7 @@ class Trainer():
         loss = self.compute_loss(logits, input_ids, attention_mask)
         return loss
     
-    def sample_completions(self, prompts, max_new_tokens: int = 200):
+    def sample_completions(self, prompts, max_new_tokens: int = 300):
         self.model.eval()
         prompts = [p[:300] for p in prompts]
         
@@ -245,7 +245,7 @@ class Trainer():
                 self.optimizer.step()
                 self.optimizer.zero_grad()
                 
-                if idx % 2000 == 0:
+                if idx % 5000 == 0:
                     val_loss = self.evaluate(val_dataloader)
                     progress_bar.set_postfix({'epoch': epoch, 'train_loss': f'{loss.item():.4f}', 'val_loss': f'{val_loss:.4f}'})
                     self.sample_completions(prompts = self.sample_prompts)
