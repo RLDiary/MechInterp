@@ -209,7 +209,7 @@ class Trainer():
 
     def train(self, train_dataset: datasets.Dataset, val_dataset: datasets.Dataset):
         train_dataloader = DataLoader(train_dataset, batch_size=self.training_config.batch_size, shuffle=True, collate_fn=self.data_collator, num_workers=16, pin_memory=True)
-        val_dataloader = DataLoader(val_dataset, batch_size=self.training_config.batch_size, shuffle=True, collate_fn=self.data_collator, num_workers=16, pin_memory=True)
+        val_dataloader = DataLoader(val_dataset, batch_size=self.training_config.batch_size, shuffle=False, collate_fn=self.data_collator, num_workers=16, pin_memory=True)
         
         total_steps = len(train_dataloader) * self.training_config.epochs
         warmup_steps = int(0.01 * total_steps)
@@ -227,18 +227,8 @@ class Trainer():
                 
                 loss = self.step(batch)
                 total_loss += loss.item()
-                loss = loss / self.training_config.grad_accumulation_steps
-                loss.backward()
-                
 
-                if (idx+1) % self.training_config.grad_accumulation_steps == 0:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-                    self.optimizer.step()
-                    scheduler.step()
-                    self.optimizer.zero_grad()
-                
-
-                # LOGGING STEPS
+                # LOGGING STEP
                 if self.use_wandb:
                     wandb.log({
                         "train/loss": loss.item(),
@@ -247,7 +237,18 @@ class Trainer():
                     }, step=self.current_step)
                 self.current_step += 1
 
-                # MODEL SAVING STEPS
+                # BACKPROPAGATION STEP
+                loss = loss / self.training_config.grad_accumulation_steps
+                loss.backward()
+
+                # GRADIENT ACCUMULATION STEP
+                if (idx+1) % self.training_config.grad_accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    self.optimizer.step()
+                    scheduler.step()
+                    self.optimizer.zero_grad()
+
+                # MODEL SAVING STEP
                 if next_checkpoint_idx < len(checkpoint_intervals) and self.current_step >= checkpoint_intervals[next_checkpoint_idx]:
                     progress_pct = int((next_checkpoint_idx + 1) * 20)
                     checkpoint_path = f"GPT-2/Checkpoints/model_checkpoint_{progress_pct}pct_step_{self.current_step}.pt"
