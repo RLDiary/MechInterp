@@ -72,8 +72,6 @@ def load_gpt2_weights(model_cfg, gen_cfg):
     sampler.model.load_state_dict(modified_state_dict)
     return sampler
 
-def load_pretrained_model_weights()
-
 def run_inference(sampler):
     prompts = [
     "The senate is going to vote on a bill that will allow everyone to have their health insurance if they want it.",
