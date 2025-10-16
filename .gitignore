@@ -10,6 +10,7 @@ __pycache__/
 reviewer_comments.md
 
 # Data files
+datasets/
 *.parquet
 *.jsonl
 *.arrow
@@ -22,10 +23,14 @@ dist/
 # Virtual environment
 .venv/
 
-# Other Folders
 
+# Models
 GPT-2/Models/
-datasets/
+SAE/output/
+SAE/wandb/
+SAE/roughnote.ipynb
+
+# Other Folders
 wandb/
 GPT-2/GPT-2/
 GPT-2/roughnote.ipynb
