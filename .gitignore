@@ -29,6 +29,8 @@ GPT-2/Models/
 SAE/output/
 SAE/wandb/
 SAE/roughnote.ipynb
+1LayerModel/Models/
+1LayerModel/Checkpoints/
 
 # Other Folders
 wandb/
