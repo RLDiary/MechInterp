@@ -9,8 +9,10 @@ __pycache__/
 .env
 reviewer_comments.md
 
-# Parquet files
+# Data files
 *.parquet
+*.jsonl
+*.arrow
 
 # Build stuff
 build/
@@ -22,9 +24,9 @@ dist/
 
 # Other Folders
 
-Models/
+GPT-2/Models/
 datasets/
 wandb/
 GPT-2/GPT-2/
-
+GPT-2/roughnote.ipynb
 cheatsheet.md
