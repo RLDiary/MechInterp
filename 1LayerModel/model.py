@@ -51,7 +51,7 @@ class Attention(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.register_buffer("IGNORE", torch.tensor(float("-inf"), dtype=torch.float32, device=device), persistent=False)
-        self.ln_1 = LayerNorm(cfg)
+        
         self.scale_factor = cfg.d_head ** -0.5
         self.W_k = nn.Parameter(torch.empty(cfg.n_heads, cfg.d_model, cfg.d_head, device = device))
         self.W_q = nn.Parameter(torch.empty(cfg.n_heads, cfg.d_model, cfg.d_head, device = device))
@@ -71,10 +71,9 @@ class Attention(nn.Module):
         return attn_scores
 
     def forward(self, resid_stream: Tensor, attn_mask: Tensor):
-        layer_normalised = self.ln_1(resid_stream)
-        q = einops.einsum(layer_normalised, self.W_q, "B s_q d_model, n_heads d_model d_head -> B s_q n_heads d_head") + self.b_q
-        k = einops.einsum(layer_normalised, self.W_k, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_k
-        v = einops.einsum(layer_normalised, self.W_v, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_v
+        q = einops.einsum(resid_stream, self.W_q, "B s_q d_model, n_heads d_model d_head -> B s_q n_heads d_head") + self.b_q
+        k = einops.einsum(resid_stream, self.W_k, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_k
+        v = einops.einsum(resid_stream, self.W_v, "B s_k d_model, n_heads d_model d_head -> B s_k n_heads d_head") + self.b_v
         attn_scores = einops.einsum(q, k, " B s_q n_heads d_head, B s_k n_heads d_head -> B n_heads s_q s_k") * self.scale_factor
         attn_scores = self.apply_causal_mask(attn_scores)
         attn_pattern = attn_scores.softmax(dim = -1)
@@ -93,8 +92,8 @@ class MLP(nn.Module):
         self.dropout = nn.Dropout(float(cfg.resid_dropout))
 
     def forward(self, resid_stream: Tensor):
-        layer_normalised = self.ln_2(resid_stream)
-        layer_one = self.c_fc(layer_normalised)
+        
+        layer_one = self.c_fc(resid_stream)
         non_linear_activated = self.gelu(layer_one)
         layer_two = self.c_proj(non_linear_activated)
         hidden_state = self.dropout(layer_two)
@@ -104,14 +103,19 @@ class TransformerBlock(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
+        self.ln_1 = nn.LayerNorm(cfg.d_model, eps=cfg.var_epsilon)
         self.attention = Attention(cfg)
+        self.ln_2 = nn.LayerNorm(cfg.d_model, eps=cfg.var_epsilon)
         self.mlp = MLP(cfg)
     
     def forward(self, resid_stream: Tensor, attn_mask: Tensor):
-        attn_out = self.attention(resid_stream, attn_mask)
+        layer_normalised = self.ln_1(resid_stream)
+        attn_out = self.attention(layer_normalised, attn_mask)
         resid_mid_stream = resid_stream + attn_out
+        layer_normalised = self.ln_2(resid_mid_stream)
         mlp_out = self.mlp(resid_mid_stream)
-        return mlp_out + resid_mid_stream
+        resid_stream = resid_mid_stream + mlp_out
+        return resid_stream
 
 class UnEmbed(nn.Module):
     def __init__(self, cfg):
