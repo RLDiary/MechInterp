@@ -1,3 +1,4 @@
+# Adapted from the implementation here - https://github.com/openai/sparse_autoencoder/blob/main/sparse_autoencoder/model.py
 from typing import Callable, Any
 
 import torch
@@ -47,9 +48,7 @@ class Autoencoder(nn.Module):
         self.latents_activation_frequency: torch.Tensor
         self.latents_mean_square: torch.Tensor
         self.register_buffer("stats_last_nonzero", torch.zeros(n_latents, dtype=torch.long))
-        self.register_buffer(
-            "latents_activation_frequency", torch.ones(n_latents, dtype=torch.float)
-        )
+        self.register_buffer("latents_activation_frequency", torch.ones(n_latents, dtype=torch.float))
         self.register_buffer("latents_mean_square", torch.zeros(n_latents, dtype=torch.float))
 
     def encode_pre_act(self, x: torch.Tensor, latent_slice: slice = slice(None)) -> torch.Tensor:
@@ -60,9 +59,7 @@ class Autoencoder(nn.Module):
         :return: autoencoder latents before activation (shape: [batch, n_latents])
         """
         x = x - self.pre_bias
-        latents_pre_act = F.linear(
-            x, self.encoder.weight[latent_slice], self.latent_bias[latent_slice]
-        )
+        latents_pre_act = F.linear(x, self.encoder.weight[latent_slice], self.latent_bias[latent_slice])
         return latents_pre_act
 
     def preprocess(self, x: torch.Tensor) -> tuple[torch.Tensor, dict[str, Any]]:
