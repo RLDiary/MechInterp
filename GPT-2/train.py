@@ -84,13 +84,13 @@ def load_dataset(tokenizer):
 
                 # Split into multiple samples if longer than max_length
                 for i in range(0, len(tokens), max_length):
-                        chunk_ids = tokens[i:i + max_length]
-                        if len(chunk_ids) == 0:
-                            continue
-                        all_chunks.append({
-                            "input_ids": chunk_ids,
-                            "attention_mask": [1] * len(chunk_ids)
-                        })
+                    chunk_ids = tokens[i:i + max_length]
+                    if len(chunk_ids) == 0:
+                        continue
+                    all_chunks.append({
+                        "input_ids": chunk_ids,
+                        "attention_mask": [1] * len(chunk_ids)
+                    })
 
             return {'input_ids': [chunk["input_ids"] for chunk in all_chunks],
                     'attention_mask': [chunk["attention_mask"] for chunk in all_chunks]}

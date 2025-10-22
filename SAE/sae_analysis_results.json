@@ -1,0 +1,504 @@
+{
+  "model_info": {
+    "model_path": "/home/ubuntu/TauBench/tau-bench/Model Tuning/Llama3.2-3B-Instruct",
+    "layer_analyzed": 5,
+    "hidden_size": 3072,
+    "sae_expansion_factor": 4.0
+  },
+  "training_results": {
+    "train_losses": [
+      48.23596811294556,
+      26.97853660583496,
+      7.430080413818359,
+      6.671993970870972,
+      4.5567405223846436,
+      2.5906301736831665,
+      1.0406901836395264,
+      0.8478538393974304,
+      1.08431077003479,
+      0.8674436807632446,
+      0.4105723053216934,
+      0.3717900216579437,
+      0.47198545932769775,
+      0.3718704432249069,
+      0.22227628529071808,
+      0.23424973338842392,
+      0.22138149291276932,
+      0.2485031858086586,
+      0.34147809445858,
+      0.33460699021816254,
+      0.30777836591005325,
+      0.20302839577198029,
+      0.16924353688955307,
+      0.11709458008408546,
+      0.0813806913793087,
+      0.0546512957662344,
+      0.05496888607740402,
+      0.03705802746117115,
+      0.03323337435722351,
+      0.03254646994173527,
+      0.02956198062747717,
+      0.027563147246837616,
+      0.024834400042891502,
+      0.022211117669939995,
+      0.022901819087564945,
+      0.018488098867237568,
+      0.023627623915672302,
+      0.02388169802725315,
+      0.019703163765370846,
+      0.01538760494440794,
+      0.021612864919006824,
+      0.016506779473274946,
+      0.018260812386870384,
+      0.017897197976708412,
+      0.01222905796021223,
+      0.011299146339297295,
+      0.009923678357154131,
+      0.02872476726770401,
+      0.02465096302330494,
+      0.0413772976025939
+    ],
+    "val_losses": [
+      50.145137786865234,
+      10.266534805297852,
+      8.931005477905273,
+      6.83961820602417,
+      4.009063720703125,
+      1.55025315284729,
+      1.0021677017211914,
+      1.4332971572875977,
+      1.3343523740768433,
+      0.6785401701927185,
+      0.47335174679756165,
+      0.578579843044281,
+      0.5094752311706543,
+      0.2956847548484802,
+      0.2701522409915924,
+      0.23897403478622437,
+      0.17003528773784637,
+      0.17970304191112518,
+      0.6096967458724976,
+      0.44970494508743286,
+      0.23269708454608917,
+      0.1989600658416748,
+      0.21702426671981812,
+      0.099876768887043,
+      0.08185286074876785,
+      0.07905472815036774,
+      0.048870980739593506,
+      0.05380553752183914,
+      0.048141226172447205,
+      0.04367194324731827,
+      0.03937011957168579,
+      0.029978156089782715,
+      0.02961471863090992,
+      0.03468124940991402,
+      0.025060635060071945,
+      0.03889301046729088,
+      0.029926404356956482,
+      0.02284139394760132,
+      0.019844088703393936,
+      0.030779382213950157,
+      0.01900552399456501,
+      0.02531513012945652,
+      0.020745093002915382,
+      0.01515937875956297,
+      0.02032708190381527,
+      0.019504563882946968,
+      0.05982234701514244,
+      0.05214841663837433,
+      0.06415671855211258,
+      0.03299818933010101
+    ],
+    "sparsity_history": [
+      0.47759246826171875,
+      0.5347067713737488,
+      0.5535380244255066,
+      0.5049381256103516,
+      0.4723987579345703,
+      0.4341112971305847,
+      0.40603384375572205,
+      0.3976275324821472,
+      0.3869088590145111,
+      0.37535542249679565,
+      0.37637075781822205,
+      0.3703327178955078,
+      0.3643462061882019,
+      0.36045265197753906,
+      0.35036787390708923,
+      0.35062727332115173,
+      0.34112295508384705,
+      0.3407306671142578,
+      0.3392569422721863,
+      0.33325642347335815,
+      0.3333371579647064,
+      0.33037757873535156,
+      0.32872265577316284,
+      0.32984036207199097,
+      0.33039411902427673,
+      0.32959747314453125,
+      0.33110493421554565,
+      0.32887396216392517,
+      0.33084744215011597,
+      0.3296318054199219,
+      0.3309745788574219,
+      0.3288657069206238,
+      0.32911938428878784,
+      0.32697615027427673,
+      0.3272756040096283,
+      0.32497215270996094,
+      0.3240254819393158,
+      0.3222166895866394,
+      0.3207823634147644,
+      0.32010143995285034,
+      0.31825384497642517,
+      0.3182424008846283,
+      0.3168475031852722,
+      0.31670063734054565,
+      0.31631916761398315,
+      0.3155326843261719,
+      0.3157297968864441,
+      0.31542205810546875,
+      0.3152243494987488,
+      0.3155689239501953
+    ]
+  },
+  "feature_interpretations": [
+    {
+      "feature_idx": 1013,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.4653899669647217,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.526507556438446,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.37116676568984985,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 413,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5206207036972046,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5743650197982788,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.33280259370803833,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 897,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.44442862272262573,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5929731130599976,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3842495381832123,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 1164,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.49373048543930054,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.44263583421707153,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.34940242767333984,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 785,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5402654409408569,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5145085453987122,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.32892775535583496,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 1176,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5802024006843567,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.7686917781829834,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3132133185863495,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 244,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5597318410873413,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.7013373970985413,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3886531591415405,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 1206,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.4260864555835724,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5070582032203674,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3223417401313782,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 511,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.567520260810852,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.7117239236831665,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3231549561023712,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 788,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5444492101669312,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5948972702026367,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.30720508098602295,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 1208,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.3982568383216858,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.33067166805267334,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.42855221033096313,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 428,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.4684965908527374,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3577531576156616,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.404190331697464,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 851,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.3660520315170288,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.46622729301452637,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.32005804777145386,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 727,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.5298863649368286,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.5677899122238159,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.4113926291465759,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    },
+    {
+      "feature_idx": 560,
+      "activation_rate": 0.942187488079071,
+      "interpretation": "Likely represents: Definitional or explanatory statements",
+      "examples": [
+        {
+          "activation": 0.3550697863101959,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.35776486992836,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        },
+        {
+          "activation": 0.3468964099884033,
+          "text": "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+          "text_idx": 0
+        }
+      ]
+    }
+  ],
+  "summary_statistics": {
+    "total_features": 12288,
+    "active_features": 8322,
+    "highly_active_features": 4441,
+    "average_sparsity": 0.2047804445028305
+  }
+}

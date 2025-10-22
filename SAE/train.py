@@ -29,8 +29,8 @@ class SAETrainingConfig:
     warmup_ratio: float = 0.1
 
     # SAE specific parameters
-    n_latents: int = 8192
-    n_inputs: int = 1024
+    n_latents: int = 16384
+    n_inputs: int = 4096
     tied_weights: bool = False
     normalize_activations: bool = False
     dead_neuron_threshold: int = 10000
@@ -353,7 +353,7 @@ class SAETrainer:
 
         print(f"Checkpoint loaded from {checkpoint_path}")
 
-def create_dummy_activation_data(n_samples: int = 100000, n_inputs: int = 768) -> torch.Tensor:
+def create_dummy_activation_data(n_samples: int = 100000, n_inputs: int = 4096) -> torch.Tensor:
     """
     Create dummy activation data for testing
     In practice, this should be replaced with actual model activations
@@ -384,8 +384,8 @@ def main():
         epochs=10,
         lr=1e-4,
         l1_coefficient=1e-3,
-        n_latents=8192,
-        n_inputs=1024,
+        n_latents=16384,
+        n_inputs=4096,
         wandb_project="sae_training_demo",
         wandb_name="baseline_run"
     )
