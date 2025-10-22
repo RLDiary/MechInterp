@@ -8,3 +8,4 @@ max_ctx: 2048
 init_range: 0.02
 var_epsilon: !!float 1e-05
 resid_dropout: 0.0
+attention_dropout: 0.0
