@@ -15,6 +15,7 @@ datasets/
 *.jsonl
 *.arrow
 *.pt
+*.safetensors
 
 # Build stuff
 build/
