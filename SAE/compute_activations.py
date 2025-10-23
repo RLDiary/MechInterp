@@ -205,206 +205,128 @@ def chunk_and_pad(batch, max_length=2048):
 
 
 #########################################
-# PART 2: Fast Memory-Mapped Streaming
+# PART 2: Simple Batch-by-Batch Saving
 #########################################
-
-class ActivationWriter:
-    """Memory-mapped file writer for fast incremental activation saves"""
-    
-    def __init__(self, filepath, hidden_dim, estimated_samples=10_000_000, dtype=np.float32):
-        """
-        Args:
-            filepath: Path to save activations
-            hidden_dim: Dimension of activation vectors
-            estimated_samples: Estimated total samples (pre-allocates space)
-            dtype: Data type for storage
-        """
-        self.filepath = filepath
-        self.hidden_dim = hidden_dim
-        self.dtype = dtype
-        self.current_idx = 0
-        
-        # Pre-allocate memory-mapped file
-        self.memmap = np.memmap(
-            filepath,
-            dtype=dtype,
-            mode='w+',
-            shape=(estimated_samples, hidden_dim)
-        )
-        print(f"Pre-allocated {estimated_samples:,} x {hidden_dim} array "
-              f"({estimated_samples * hidden_dim * np.dtype(dtype).itemsize / 1024**3:.2f} GB)")
-    
-    def append(self, activations):
-        """
-        Append activations to memory-mapped file.
-        
-        Args:
-            activations: Tensor of shape (num_samples, hidden_dim)
-        """
-        # Convert to numpy if needed
-        if torch.is_tensor(activations):
-            activations = activations.cpu().numpy()
-        
-        num_samples = activations.shape[0]
-        end_idx = self.current_idx + num_samples
-        
-        # Check if we need to expand
-        if end_idx > self.memmap.shape[0]:
-            self._expand(end_idx)
-        
-        # Write directly to memory-mapped file
-        self.memmap[self.current_idx:end_idx] = activations
-        self.current_idx = end_idx
-        
-        # Flush to disk periodically (every ~100MB)
-        if self.current_idx % 10000 == 0:
-            self.memmap.flush()
-    
-    def _expand(self, required_size):
-        """Expand memory-mapped file if needed"""
-        new_size = max(required_size, int(self.memmap.shape[0] * 1.5))
-        print(f"Expanding memmap from {self.memmap.shape[0]:,} to {new_size:,} samples")
-        
-        # Create new larger memmap
-        new_memmap = np.memmap(
-            self.filepath + '.tmp',
-            dtype=self.dtype,
-            mode='w+',
-            shape=(new_size, self.hidden_dim)
-        )
-        
-        # Copy existing data
-        new_memmap[:self.current_idx] = self.memmap[:self.current_idx]
-        
-        # Cleanup and replace
-        del self.memmap
-        os.remove(self.filepath)
-        os.rename(self.filepath + '.tmp', self.filepath)
-        self.memmap = new_memmap
-    
-    def finalize(self):
-        """Trim file to actual size and save metadata"""
-        print(f"Finalizing: trimming to {self.current_idx:,} samples")
-        
-        # Trim to actual size
-        final_data = self.memmap[:self.current_idx].copy()
-        del self.memmap
-        
-        # Save as pytorch tensor with metadata
-        torch.save({
-            "activations": torch.from_numpy(final_data),
-            "shape": final_data.shape,
-            "dtype": torch.float32
-        }, self.filepath)
-        
-        print(f"Saved {self.current_idx:,} activations to {self.filepath}")
-        return self.current_idx
-    
-    def __del__(self):
-        """Cleanup"""
-        if hasattr(self, 'memmap'):
-            del self.memmap
 
 
 def compute_activations_streaming(
-    model, 
-    dataloader, 
+    model,
+    dataloader,
     save_path="layer0_activations.pt",
     layer_idx=0,
     device="cuda",
-    save_every=25,  # Save after every N batches
-    estimated_samples=10_000_000  # Estimate total samples for pre-allocation
+    save_every=100
 ):
     """
-    Collect activations using memory-mapped files for fast streaming.
-    
+    Collect activations using simple batch-by-batch saving.
+
     Args:
         model: The transformer model
         dataloader: DataLoader with input batches
-        save_path: Path to save activations file
+        save_path: Path to save final merged activations file
         layer_idx: Which layer to collect from
         device: Device to run model on
-        save_every: Flush to disk after this many batches
-        estimated_samples: Estimated total samples (for pre-allocation)
-        
+        save_every: Save batch files after this many batches
+
     Returns:
         dict with metadata about collection
     """
     model.eval()
     model.to(device)
-    
-    # Remove existing file
-    if os.path.exists(save_path):
-        print(f"Warning: {save_path} exists. It will be overwritten.")
-        os.remove(save_path)
-    
-    # Get hidden dim from first batch
-    print("Getting hidden dimension from first batch...")
-    first_batch = next(iter(dataloader))
-    first_batch = {k: v.to(device) for k, v in first_batch.items()}
-    
-    with torch.no_grad():
-        with ActivationCollector(model, layer_idx=layer_idx) as temp_collector:
-            _ = model(**first_batch)
-            first_activations = temp_collector.get_activations()
-            hidden_dim = first_activations.shape[1]
-    
-    print(f"Hidden dimension: {hidden_dim}")
-    
-    # Initialize memory-mapped writer
-    writer = ActivationWriter(
-        save_path + '.npy',  # Temporary numpy file
-        hidden_dim=hidden_dim,
-        estimated_samples=estimated_samples,
-        dtype=np.float32
-    )
-    
+
+    # Create batch directory
+    batch_dir = save_path.replace('.pt', '_batches')
+    os.makedirs(batch_dir, exist_ok=True)
+
+    # Remove existing batch files
+    for f in os.listdir(batch_dir):
+        if f.startswith('batch_') and f.endswith('.pt'):
+            os.remove(os.path.join(batch_dir, f))
+
     total_batches = len(dataloader)
-    
+    batch_files = []
+    total_samples = 0
+
     with torch.no_grad():
         with ActivationCollector(model, layer_idx=layer_idx) as collector:
-            
+
             for batch_idx, batch in enumerate(tqdm(dataloader, desc="Collecting activations")):
-                
+
                 # Move batch to device
                 batch = {k: v.to(device) for k, v in batch.items()}
-                
+
                 # Forward pass (activations collected via hook)
                 _ = model(**batch)
-                
-                # Save periodically to manage memory
+
+                # Save every N batches
                 if (batch_idx + 1) % save_every == 0 or (batch_idx + 1) == total_batches:
                     # Get activations
-                    batch_activations = collector.get_activations(clear_after=False)
-                    
+                    batch_activations = collector.get_activations(clear_after=True)
+
                     if batch_activations is not None:
-                        # Fast append to memmap (no loading/concatenating!)
-                        writer.append(batch_activations)
-                        
-                        # Clear memory
-                        collector.clear_activations()
-                        
+                        # Save batch file
+                        batch_file = os.path.join(batch_dir, f"batch_{len(batch_files):04d}.pt")
+                        torch.save(batch_activations, batch_file)
+                        batch_files.append(batch_file)
+                        total_samples += batch_activations.shape[0]
+
                         # Report progress
-                        if (batch_idx + 1) % (save_every * 10) == 0:
-                            print(f"  Batch {batch_idx + 1}/{total_batches}: "
-                                  f"{writer.current_idx:,} samples written")
-    
-    # Finalize: convert numpy memmap to pytorch tensor file
-    total_samples = writer.finalize()
-    
-    # Cleanup the temporary numpy file
-    if os.path.exists(save_path + '.npy'):
-        os.remove(save_path + '.npy')
-    
+                        if len(batch_files) % 10 == 0:
+                            print(f"  Saved batch {len(batch_files)}: {total_samples:,} samples total")
+
+    # Merge all batch files into final file
+    print(f"\nMerging {len(batch_files)} batch files...")
+    all_activations = []
+
+    for batch_file in tqdm(batch_files, desc="Loading batches"):
+        activations = torch.load(batch_file, map_location='cpu')
+        all_activations.append(activations)
+
+    # Concatenate and save
+    final_activations = torch.cat(all_activations, dim=0)
+    torch.save({
+        "activations": final_activations,
+        "shape": final_activations.shape,
+        "dtype": final_activations.dtype
+    }, save_path)
+
+    # Cleanup batch files
+    for batch_file in batch_files:
+        os.remove(batch_file)
+    os.rmdir(batch_dir)
+
     print(f"\n✓ Collection complete!")
     print(f"  Total samples: {total_samples:,}")
+    print(f"  Shape: {final_activations.shape}")
     print(f"  Saved to: {save_path}")
-    
+
     return {
         "save_path": save_path,
         "total_samples": total_samples,
-        "layer_idx": layer_idx
+        "layer_idx": layer_idx,
+        "shape": final_activations.shape
     }
+
+
+def convert_to_safetensors(pt_file, safetensors_file):
+    """Convert .pt file to .safetensors format for safer loading."""
+    try:
+        from safetensors.torch import save_file
+
+        # Load .pt file
+        data = torch.load(pt_file, map_location='cpu')
+        activations = data["activations"]
+
+        # Save as safetensors
+        save_file({"activations": activations}, safetensors_file)
+
+        print(f"Converted {pt_file} to {safetensors_file}")
+        print(f"Shape: {activations.shape}")
+        return safetensors_file
+
+    except ImportError:
+        print("safetensors not installed. Install with: pip install safetensors")
+        return pt_file
 
 
 def load_activations(filepath="layer0_activations.pt"):
@@ -475,8 +397,7 @@ if __name__ == "__main__":
                                         save_path="layer0_activations.pt",
                                         layer_idx=0,
                                         device="cuda",
-                                        save_every=25,
-                                        estimated_samples=50_000_000  # Adjust based on your dataset size
+                                        save_every=100
                                     )
 
     print(f"\nActivations saved to: {result['save_path']}")
