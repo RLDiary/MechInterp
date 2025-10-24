@@ -76,7 +76,6 @@ class SAETrainer:
         self.data_collator = DataCollator(max_length=128)
         self.optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=config.lr)
         
-        
         # Training state
         self.next_checkpoint_idx = 0
         self.total_loss = 0
