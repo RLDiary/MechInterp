@@ -14,7 +14,7 @@ def LN(x: torch.Tensor, eps: float = 1e-5) -> tuple[torch.Tensor, torch.Tensor, 
     return x, mu, std
 
 
-class Autoencoder(nn.Module):
+class SparseAutoEncoder(nn.Module):
     """Sparse autoencoder
 
     Implements:
@@ -34,10 +34,14 @@ class Autoencoder(nn.Module):
         """
         super().__init__()
 
+        self.n_latents = n_latents
+        self.n_inputs = n_inputs
+        self.activation = activation
+
         self.pre_bias = nn.Parameter(torch.zeros(n_inputs))
         self.encoder: nn.Module = nn.Linear(n_inputs, n_latents, bias=False)
         self.latent_bias = nn.Parameter(torch.zeros(n_latents))
-        self.activation = activation
+        
         if tied:
             self.decoder: nn.Linear | TiedTranspose = TiedTranspose(self.encoder)
         else:
@@ -108,7 +112,7 @@ class Autoencoder(nn.Module):
     @classmethod
     def from_state_dict(
         cls, state_dict: dict[str, torch.Tensor], strict: bool = True
-    ) -> "Autoencoder":
+    ) -> "SparseAutoEncoder":
         n_latents, d_model = state_dict["encoder.weight"].shape
 
         # Retrieve activation
@@ -125,10 +129,10 @@ class Autoencoder(nn.Module):
             if hasattr(activation, "load_state_dict"):
                 activation.load_state_dict(activation_state_dict, strict=strict)
 
-        autoencoder = cls(n_latents, d_model, activation=activation, normalize=normalize)
+        sparse_autoencoder = cls(n_latents, d_model, activation=activation, normalize=normalize)
         # Load remaining state dict
-        autoencoder.load_state_dict(state_dict, strict=strict)
-        return autoencoder
+        sparse_autoencoder.load_state_dict(state_dict, strict=strict)
+        return sparse_autoencoder
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
         sd = super().state_dict(destination, prefix, keep_vars)
