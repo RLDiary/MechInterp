@@ -203,6 +203,11 @@ class SAETrainer:
         val_dataloader = None
         if val_dataset:
             val_dataloader = DataLoader(val_dataset, batch_size=self.config.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+        
+        print(f"Train dataset length: {len(train_dataset)}")
+        print(f"Val dataset length: {len(val_dataset)}")
+        print(f"Train dataloader length: {len(train_dataloader)}")
+        print(f"Val dataloader length: {len(val_dataloader)}")
 
         # Setup scheduler
         self.total_steps = len(train_dataloader) * self.config.epochs / self.config.grad_accumulation_steps
