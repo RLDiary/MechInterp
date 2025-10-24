@@ -10,7 +10,9 @@ from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
 from typing import Optional, Dict, Any, Callable
 from model import SparseAutoEncoder
-from compute_activations import ActivationCollector
+from activation_collector import ActivationCollector
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 from Utils import TransformerSampler
 from transformers import AutoTokenizer
 
@@ -129,11 +131,12 @@ class SAETrainer:
 
     def step(self, batch: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Single training step"""
-        batch = batch.to(self.config.device)
+        input_ids = batch['input_ids'].to(self.config.device)
+        attention_mask = batch['attention_mask'].to(self.config.device)
 
         # Forward pass
         with self.collector:
-            _ = self.language_model(**batch)
+            _ = self.language_model(input_ids, attention_mask)
             activations = self.collector.get_activations()
         latents_pre_act, latents, reconstructions = self.autoencoder(activations)
 
@@ -218,10 +221,9 @@ class SAETrainer:
         for epoch in range(self.config.epochs):
             self.autoencoder.train()
             epoch_losses = {}
+            progress_bar = tqdm(total=self.total_steps, desc=f'Epoch {self.current_epoch}')
 
-            progress_bar = tqdm(train_dataloader, desc=f'Epoch {self.current_epoch}')
-
-            for batch_idx, batch in enumerate(progress_bar):
+            for batch_idx, batch in enumerate(train_dataloader):
                 # Forward pass
                 loss_dict = self.step(batch)
                 loss = loss_dict["total_loss"]
@@ -257,21 +259,27 @@ class SAETrainer:
                         if val_dataloader:
                             val_losses = self.evaluate(val_dataloader)
                             self._log_metrics(val_losses, prefix="val")
+                            progress_bar.set_postfix({
+                                'val_loss': f'{val_losses["total_loss"]:.4f}',
+                                'step': self.current_step
+                            })
                         self._evaluate_dead_neurons()
+                    
+                    progress_bar.update(1)
+                    progress_bar.set_postfix({
+                        'train_loss': f'{loss.item():.4f}',
+                        'avg_train_loss': f'{np.mean(epoch_losses["total_loss"]):.4f}',
+                        'step': self.current_step
+                    })
 
-                # Update progress bar
-                avg_loss = np.mean(epoch_losses["total_loss"])
-                progress_bar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'avg_loss': f'{avg_loss:.4f}',
-                    'step': self.current_step
-                })
+                
 
         print("Training completed!")
 
         # Save final model
         self.save_checkpoint(final=True)
 
+        progress_bar.close()
         if self.use_wandb:
             wandb.finish()
 

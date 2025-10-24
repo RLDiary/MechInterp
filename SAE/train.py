@@ -143,8 +143,8 @@ def load_model(model_path, config_path):
     print(f"Model loaded successfully")
     return model, tokenizer, sampler
 
-def chunk_and_pad(batch, max_length=256):
-    """Split and pad input_ids sequences into chunks"""
+def chunk_input_ids(batch, max_length=256):
+    """Split input_ids sequences into chunks of max_length"""
     input_ids_chunks = []
 
     for tokens in batch["input_ids"]:
@@ -164,10 +164,10 @@ def chunk_and_pad(batch, max_length=256):
         "attention_mask": attention_mask
     }
 
-def load_dataset(dataset_path, max_length):
+def get_dataset(dataset_path, max_length):
     dataset = load_dataset(dataset_path, split='train')
     chunked_dataset = dataset.map(
-        chunk_and_pad(max_length=max_length),
+        chunk_input_ids,
         batched=True,
         num_proc=8,
         batch_size=64,
@@ -187,5 +187,5 @@ if __name__ == "__main__":
     sae_model = SparseAutoEncoder(n_latents=16384, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
     trainer = SAETrainer(config=SAETrainingConfig(), autoencoder=sae_model, language_model=model, tokenizer=tokenizer, sampler=sampler, use_wandb=False)
 
-    train_dataset, val_dataset = load_dataset('/home/ubuntu/MechInter/datasets/cache', max_length=256)
+    train_dataset, val_dataset = get_dataset('/home/ubuntu/MechInter/datasets/cache', max_length=256)
     trainer.train(train_dataset=train_dataset, val_dataset=val_dataset)
