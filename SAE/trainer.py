@@ -32,6 +32,32 @@ class SAETrainingConfig:
     warmup_ratio: float = 0.1
     dead_neuron_threshold: int = 10000
 
+class DataCollator:
+    def __init__(self, max_length = 128):
+        self.max_length = max_length
+
+    def __call__(self, batch):
+        """Split input_ids sequences into chunks of max_length"""
+        input_ids_chunks = []
+
+        for tokens in batch["input_ids"]:
+            for i in range(0, len(tokens), self.max_length):
+                chunk_ids = tokens[i:i + self.max_length]
+                if not chunk_ids:
+                    continue
+                input_ids_chunks.append(chunk_ids)
+
+        # Filter out chunks that are not of the same length as the max length of the batch
+        batch_max_len = max(len(x) for x in input_ids_chunks)
+        input_ids = [torch.tensor(x) for x in input_ids_chunks if len(x) == batch_max_len]
+        attention_mask = [torch.tensor([1] * len(x)) for x in input_ids]
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask
+        }
+
+
 class SAETrainer:
     def __init__(
         self,
@@ -48,7 +74,7 @@ class SAETrainer:
         self.tokenizer = tokenizer
         self.collector = ActivationCollector(self.language_model, layer_idx=0)
         self.sampler = sampler
-
+        self.data_collator = DataCollator(max_length=128)
         self.optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=config.lr)
         
         
@@ -199,10 +225,10 @@ class SAETrainer:
     ):
         """Main training loop"""
         # Create data loaders
-        train_dataloader = DataLoader(train_dataset, batch_size=self.config.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        train_dataloader = DataLoader(train_dataset, batch_size=self.config.batch_size, shuffle=True, num_workers=4, pin_memory=True, collate_fn=self.data_collator)
         val_dataloader = None
         if val_dataset:
-            val_dataloader = DataLoader(val_dataset, batch_size=self.config.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+            val_dataloader = DataLoader(val_dataset, batch_size=self.config.batch_size, shuffle=False, num_workers=4, pin_memory=True, collate_fn=self.data_collator)
         
         print(f"Train dataset length: {len(train_dataset)}")
         print(f"Val dataset length: {len(val_dataset)}")

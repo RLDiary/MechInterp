@@ -143,41 +143,12 @@ def load_model(model_path, config_path):
     print(f"Model loaded successfully")
     return model, tokenizer, sampler
 
-def chunk_input_ids(batch, max_length=128):
-    """Split input_ids sequences into chunks of max_length"""
-    input_ids_chunks = []
-
-    for tokens in batch["input_ids"]:
-        for i in range(0, len(tokens), max_length):
-            chunk_ids = tokens[i:i + max_length]
-            if not chunk_ids:
-                continue
-            input_ids_chunks.append(chunk_ids)
-
-    # Filter out chunks that are not of the same length as the max length of the batch
-    batch_max_len = max(len(x) for x in input_ids_chunks)
-    input_ids = [x for x in input_ids_chunks if len(x) == batch_max_len]
-    attention_mask = [[1] * len(x) for x in input_ids]
-
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask
-    }
-
 def get_dataset(dataset_path, max_length):
     dataset = load_dataset(dataset_path, split='train')
     dataset = dataset.train_test_split(test_size=0.01, shuffle=True, seed=42)
     train_dataset, val_dataset = dataset['train'], dataset['test']
 
     for ds in [train_dataset, val_dataset]:
-        ds = ds.map(
-            chunk_input_ids,
-            batched=True,
-            num_proc=8,
-            batch_size=64,
-            remove_columns=ds.column_names,
-            desc="Chunking data"
-        )
         ds.set_format(type="torch", columns=["input_ids", "attention_mask"])
 
     return train_dataset, val_dataset
