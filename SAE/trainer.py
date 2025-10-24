@@ -27,7 +27,7 @@ class SAETrainingConfig:
     wandb_name: Optional[str] = None
     l1_coefficient: float = 1e-3
     grad_accumulation_steps: int = 6
-    log_every: int = 100
+    log_every: int = 10
     max_grad_norm: float = 1.0
     warmup_ratio: float = 0.1
     dead_neuron_threshold: int = 10000
@@ -40,17 +40,16 @@ class DataCollator:
         """Split input_ids sequences into chunks of max_length"""
         input_ids_chunks = []
 
-        for tokens in batch["input_ids"]:
+        for sample in batch:
+            tokens = sample['input_ids']
             for i in range(0, len(tokens), self.max_length):
                 chunk_ids = tokens[i:i + self.max_length]
-                if not chunk_ids:
-                    continue
                 input_ids_chunks.append(chunk_ids)
 
         # Filter out chunks that are not of the same length as the max length of the batch
         batch_max_len = max(len(x) for x in input_ids_chunks)
-        input_ids = [torch.tensor(x) for x in input_ids_chunks if len(x) == batch_max_len]
-        attention_mask = [torch.tensor([1] * len(x)) for x in input_ids]
+        input_ids = [x for x in input_ids_chunks if len(x) == batch_max_len]
+        attention_mask = [torch.ones(len(x), dtype=torch.long) for x in input_ids]
 
         return {
             "input_ids": input_ids,
@@ -157,13 +156,15 @@ class SAETrainer:
 
     def step(self, batch: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Single training step"""
-        input_ids = batch['input_ids'].to(self.config.device)
-        attention_mask = batch['attention_mask'].to(self.config.device)
+
+        input_ids = torch.stack(batch['input_ids']).to(self.config.device)
+        attention_mask = torch.stack(batch['attention_mask']).to(self.config.device)
 
         # Forward pass
-        with self.collector:
-            _ = self.language_model(input_ids, attention_mask)
-            activations = self.collector.get_activations()
+
+        _ = self.language_model(input_ids, attention_mask)
+        activations = self.collector.get_activations()
+        activations = activations.to(self.config.device)
         latents_pre_act, latents, reconstructions = self.autoencoder(activations)
 
         # Compute loss

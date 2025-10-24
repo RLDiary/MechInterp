@@ -143,7 +143,7 @@ def load_model(model_path, config_path):
     print(f"Model loaded successfully")
     return model, tokenizer, sampler
 
-def get_dataset(dataset_path, max_length):
+def get_dataset(dataset_path):
     dataset = load_dataset(dataset_path, split='train')
     dataset = dataset.train_test_split(test_size=0.01, shuffle=True, seed=42)
     train_dataset, val_dataset = dataset['train'], dataset['test']
@@ -159,7 +159,7 @@ if __name__ == "__main__":
         config_path="/home/ubuntu/MechInter/OneLayerModel/OneLM.yaml"
         )
     sae_model = SparseAutoEncoder(n_latents=16384, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
-    trainer = SAETrainer(config=SAETrainingConfig(), autoencoder=sae_model, language_model=model, tokenizer=tokenizer, sampler=sampler, use_wandb=False)
+    trainer = SAETrainer(config=SAETrainingConfig(), autoencoder=sae_model, language_model=model, tokenizer=tokenizer, sampler=sampler, use_wandb=True)
 
-    train_dataset, val_dataset = get_dataset('/home/ubuntu/MechInter/datasets/cache', max_length=256)
+    train_dataset, val_dataset = get_dataset('/home/ubuntu/MechInter/datasets/cache')
     trainer.train(train_dataset=train_dataset, val_dataset=val_dataset)

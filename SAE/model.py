@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def LN(x: torch.Tensor, eps: float = 1e-5) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     mu = x.mean(dim=-1, keepdim=True)
@@ -38,11 +39,12 @@ class SparseAutoEncoder(nn.Module):
         self.n_inputs = n_inputs
         self.activation = activation
 
-        self.pre_bias = nn.Parameter(torch.zeros(n_inputs))
+        self.pre_bias = nn.Parameter(torch.zeros(n_inputs, device=device))
         self.encoder: nn.Module = nn.Linear(n_inputs, n_latents, bias=False)
-        self.latent_bias = nn.Parameter(torch.zeros(n_latents))
+        self.latent_bias = nn.Parameter(torch.zeros(n_latents, device=device))
+        self.tied = tied
         
-        if tied:
+        if self.tied:
             self.decoder: nn.Linear | TiedTranspose = TiedTranspose(self.encoder)
         else:
             self.decoder = nn.Linear(n_latents, n_inputs, bias=False)

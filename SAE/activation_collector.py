@@ -55,6 +55,7 @@ class ActivationCollector:
             # Use the factory function to create the hook
             hook_fn = create_activation_hook(self)
             self.hook = target_layer.register_forward_hook(hook_fn)
+            print(f"Hook registered on layer {self.layer_idx}")
             
         except (AttributeError, IndexError) as e:
             raise ValueError(
