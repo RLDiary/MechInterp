@@ -24,8 +24,8 @@ class SAETrainingConfig:
     lr: float = 1e-4
     weight_decay: float = 1e-2
     wandb_project: str = "1L21M SAE Training"
-    wandb_name: Optional[str] = None
-    l1_coefficient: float = 1e-3
+    wandb_name: Optional[str] = 'L1-Coefficient-5'
+    l1_coefficient: float = 5
     grad_accumulation_steps: int = 6
     log_every: int = 10
     max_grad_norm: float = 1.0
@@ -340,79 +340,3 @@ class SAETrainer:
         self.current_epoch = checkpoint['epoch']
 
         print(f"Checkpoint loaded from {checkpoint_path}")
-
-def create_dummy_activation_data(n_samples: int = 100000, n_inputs: int = 4096) -> torch.Tensor:
-    """
-    Create dummy activation data for testing
-    In practice, this should be replaced with actual model activations
-    """
-    # Create somewhat realistic activation data
-    # Mix of sparse and dense components
-    activations = torch.zeros(n_samples, n_inputs)
-
-    # Dense component (small)
-    dense_component = torch.randn(n_samples, n_inputs) * 0.1
-    activations += dense_component
-
-    # Sparse component (larger magnitude)
-    n_active = int(0.1 * n_inputs)  # 10% active features
-    for i in range(n_samples):
-        active_indices = torch.randperm(n_inputs)[:n_active]
-        activations[i, active_indices] += torch.randn(n_active) * 0.5
-
-    # Add some ReLU-like behavior
-    activations = F.relu(activations)
-
-    return activations
-
-def main():
-    # Configuration
-    config = SAETrainingConfig(
-        batch_size=4096,
-        epochs=10,
-        lr=1e-4,
-        l1_coefficient=1e-3,
-        n_latents=16384,
-        n_inputs=4096,
-        wandb_project="sae_training_demo",
-        wandb_name="baseline_run"
-    )
-
-    # Create autoencoder
-    autoencoder = Autoencoder(
-        n_latents=config.n_latents,
-        n_inputs=config.n_inputs,
-        activation=nn.ReLU(),
-        tied=config.tied_weights,
-        normalize=config.normalize_activations
-    )
-
-    # Create trainer
-    trainer = SAETrainer(config, autoencoder, use_wandb=False)
-
-    # Create dummy data (replace with actual activation data)
-    print("Creating dummy activation data...")
-    activations = create_dummy_activation_data(
-        n_samples=100000,
-        n_inputs=config.n_inputs
-    )
-
-    # Create datasets
-    total_samples = activations.shape[0]
-    val_size = int(0.1 * total_samples)
-    train_size = total_samples - val_size
-
-    train_activations = activations[:train_size]
-    val_activations = activations[train_size:]
-
-    train_dataset = ActivationDataset(train_activations)
-    val_dataset = ActivationDataset(val_activations)
-
-    print(f"Training samples: {len(train_dataset)}")
-    print(f"Validation samples: {len(val_dataset)}")
-
-    # Train
-    trainer.train(train_dataset, val_dataset)
-
-if __name__ == "__main__":
-    main()
