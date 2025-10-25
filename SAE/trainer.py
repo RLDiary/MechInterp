@@ -83,7 +83,8 @@ class SAETrainer:
         self.current_epoch = 0
 
         # Create checkpoints directory
-        os.makedirs("SAE/Checkpoints", exist_ok=True)
+        self.checkpoint_dir = "Checkpoints"
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         # Initialize wandb
         self.use_wandb = use_wandb
@@ -242,7 +243,7 @@ class SAETrainer:
             self.optimizer, warmup_steps, self.total_steps
         )
         
-        self.checkpoint_intervals = [int(self.total_steps * p) for p in [0.2, 0.4, 0.6, 0.8, 1.0]]
+        self.checkpoint_intervals = [int(self.total_steps * p) for p in [0.01, 0.2, 0.4, 0.6, 0.8, 1.0]]
         next_checkpoint_idx = 0
 
         print(f"Training for {self.config.epochs} epochs, {self.total_steps} total steps")
@@ -317,7 +318,7 @@ class SAETrainer:
     def save_checkpoint(self, final: bool = False):
         """Save model checkpoint"""
         suffix = "final" if final else f"step_{self.current_step}"
-        checkpoint_path = f"SAE/checkpoints/sae_checkpoint_{suffix}.pt"
+        checkpoint_path = f"{self.checkpoint_dir}/sae_checkpoint_{suffix}.pt"
 
         checkpoint = {
             'model_state_dict': self.autoencoder.state_dict(),
