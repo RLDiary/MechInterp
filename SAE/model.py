@@ -39,7 +39,7 @@ class SparseAutoEncoder(nn.Module):
         self.n_inputs = n_inputs
         self.activation = activation
 
-        self.pre_bias = nn.Parameter(torch.zeros(n_inputs, device=device))
+        # self.pre_bias = nn.Parameter(torch.zeros(n_inputs, device=device))
         self.encoder: nn.Module = nn.Linear(n_inputs, n_latents, bias=False)
         self.latent_bias = nn.Parameter(torch.zeros(n_latents, device=device))
         self.tied = tied
@@ -48,6 +48,7 @@ class SparseAutoEncoder(nn.Module):
             self.decoder: nn.Linear | TiedTranspose = TiedTranspose(self.encoder)
         else:
             self.decoder = nn.Linear(n_latents, n_inputs, bias=False)
+            self.decoder_bias = nn.Parameter(torch.zeros(n_inputs, device=device))
         self.normalize = normalize
 
         self.stats_last_nonzero: torch.Tensor
@@ -64,7 +65,8 @@ class SparseAutoEncoder(nn.Module):
             Example: latent_slice = slice(0, 10) to compute only the first 10 latents.
         :return: autoencoder latents before activation (shape: [batch, n_latents])
         """
-        x = x - self.pre_bias
+        # In the updated SAE arcitecture, the pre_bias term is not used.
+        # x = x - self.pre_bias
         latents_pre_act = F.linear(x, self.encoder.weight[latent_slice], self.latent_bias[latent_slice])
         return latents_pre_act
 
@@ -87,7 +89,10 @@ class SparseAutoEncoder(nn.Module):
         :param latents: autoencoder latents (shape: [batch, n_latents])
         :return: reconstructed data (shape: [batch, n_inputs])
         """
-        ret = self.decoder(latents) + self.pre_bias
+        # In the updated SAE arcitecture, the pre_bias term is not used.
+        # ret = self.decoder(latents) + self.pre_bias
+        
+        ret = F.linear(latents, self.decoder.weight, self.decoder_bias)
         if self.normalize:
             assert info is not None
             ret = ret * info["std"] + info["mu"]

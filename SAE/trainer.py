@@ -75,7 +75,7 @@ class SAETrainer:
         self.sampler = sampler
         self.data_collator = DataCollator(max_length=128)
         self.optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=config.lr)
-        
+
         # Training state
         self.next_checkpoint_idx = 0
         self.total_loss = 0
@@ -123,22 +123,32 @@ class SAETrainer:
         Returns:
             Dictionary containing loss components
         """
-        # Reconstruction loss (MSE)
-        reconstruction_loss = F.mse_loss(reconstructions, activations)
+        B, D = activations.shape
+        _, L = latents.shape
+        
+        # # --- 1. Reconstruction loss
+        reconstruction_loss = ((reconstructions - activations) ** 2).sum() / (B * D)
 
-        # L1 sparsity loss on latents
-        l1_loss = torch.mean(torch.abs(latents))
+        # --- 2. Weighted sparsity loss
+        # This is the unweighted sparsity loss
+        # l1_loss = latents.abs().sum() / (B * L)
+        
+        # This is the weighted sparsity loss as implemented here -> https://transformer-circuits.pub/2024/april-update/index.html
+        # Weighted sparsity loss coefficients
+        self.W_d = self.autoencoder.decoder.weight
+        self.W_d_l2norm = torch.linalg.norm(self.W_d, dim=0).unsqueeze(0).to(self.config.device)
+        l1_loss = (latents * self.W_d_l2norm).abs().sum() / (B * L)
 
         # Total loss
         total_loss = reconstruction_loss + self.config.l1_coefficient * l1_loss
 
         # Compute additional metrics
         with torch.no_grad():
-            # Fraction of latents that are active (non-zero)
-            active_latents = (latents != 0).float().mean()
+            # Fraction of latents that are active (greater than 0)
+            active_latents = (latents > 0).float().mean()
 
             # L0 norm (number of active latents per sample)
-            l0_norm = (latents != 0).float().sum(dim=-1).mean()
+            l0_norm = (latents > 0).float().sum(dim=-1).mean()
 
             # Variance explained
             variance_original = torch.var(activations, dim=0).mean()
