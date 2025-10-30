@@ -57,6 +57,41 @@ class SparseAutoEncoder(nn.Module):
         self.register_buffer("stats_last_nonzero", torch.zeros(n_latents, dtype=torch.long))
         self.register_buffer("latents_activation_frequency", torch.ones(n_latents, dtype=torch.float))
         self.register_buffer("latents_mean_square", torch.zeros(n_latents, dtype=torch.float))
+        
+        # Custom weight initialization
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """
+        Initialize decoder weights with columns having random directions and fixed L2 norm.
+        Initialize encoder weights as the transpose of decoder weights.
+        """
+        # Set decoder_norm to 0.1 as a reasonable default
+        decoder_norm = 0.1
+        
+        if not self.tied:
+            # Initialize decoder weights with random directions
+            # decoder.weight shape: [n_inputs, n_latents]
+            # Each column (dimension 0) should have L2 norm = decoder_norm
+            with torch.no_grad():
+                # Generate random weights
+                nn.init.normal_(self.decoder.weight)
+                
+                # Normalize each column to have L2 norm = decoder_norm
+                # Columns are along dimension 0
+                column_norms = torch.norm(self.decoder.weight, p=2, dim=0, keepdim=True)
+                self.decoder.weight.data = self.decoder.weight / column_norms * decoder_norm
+                self.encoder.weight.data = self.decoder.weight.t().clone()
+        else:
+            # For tied weights, only initialize encoder
+            # encoder.weight shape: [n_latents, n_inputs]
+            with torch.no_grad():
+                nn.init.normal_(self.encoder.weight)
+                
+                # Normalize each row to have L2 norm = decoder_norm
+                # (because decoder uses transpose, rows of encoder = columns of decoder)
+                row_norms = torch.norm(self.encoder.weight, p=2, dim=1, keepdim=True)
+                self.encoder.weight.data = self.encoder.weight / row_norms * decoder_norm
 
     def encode_pre_act(self, x: torch.Tensor, latent_slice: slice = slice(None)) -> torch.Tensor:
         """
@@ -91,7 +126,7 @@ class SparseAutoEncoder(nn.Module):
         """
         # In the updated SAE arcitecture, the pre_bias term is not used.
         # ret = self.decoder(latents) + self.pre_bias
-        
+
         ret = F.linear(latents, self.decoder.weight, self.decoder_bias)
         if self.normalize:
             assert info is not None

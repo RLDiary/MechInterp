@@ -158,7 +158,7 @@ if __name__ == "__main__":
         model_path="/home/ubuntu/MechInter/OneLayerModel/Models/TinyStories-1L-21M",
         config_path="/home/ubuntu/MechInter/OneLayerModel/OneLM.yaml"
         )
-    sae_model = SparseAutoEncoder(n_latents=16384, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
+    sae_model = SparseAutoEncoder(n_latents=131_072, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
     trainer = SAETrainer(config=SAETrainingConfig(), autoencoder=sae_model, language_model=model, tokenizer=tokenizer, sampler=sampler, use_wandb=True)
 
     train_dataset, val_dataset = get_dataset('/home/ubuntu/MechInter/datasets/cache')

@@ -7,7 +7,6 @@ import numpy as np
 from torch.utils.data import DataLoader, Dataset
 from dataclasses import dataclass
 from tqdm import tqdm
-from transformers import get_linear_schedule_with_warmup
 from typing import Optional, Dict, Any, Callable
 from model import SparseAutoEncoder
 from activation_collector import ActivationCollector
@@ -15,6 +14,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 from Utils import TransformerSampler
 from transformers import AutoTokenizer
+from torch.optim.lr_scheduler import LambdaLR
 
 @dataclass
 class SAETrainingConfig:
@@ -26,7 +26,8 @@ class SAETrainingConfig:
     wandb_project: str = "1L21M SAE Training"
     wandb_name: Optional[str] = 'L1-Coefficient-5'
     l1_coefficient: float = 5
-    grad_accumulation_steps: int = 6
+    l1_warmup_ratio: float = 0.05 # Warmup ratio for the l1_coefficient
+    grad_accumulation_steps: int = 12
     log_every: int = 10
     max_grad_norm: float = 1.0
     warmup_ratio: float = 0.1
@@ -75,6 +76,7 @@ class SAETrainer:
         self.sampler = sampler
         self.data_collator = DataCollator(max_length=128)
         self.optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=config.lr)
+        
 
         # Training state
         self.next_checkpoint_idx = 0
@@ -140,7 +142,7 @@ class SAETrainer:
         l1_loss = (latents * self.W_d_l2norm).abs().sum() / (B * L)
 
         # Total loss
-        total_loss = reconstruction_loss + self.config.l1_coefficient * l1_loss
+        total_loss = reconstruction_loss + self.get_current_l1_coefficient() * l1_loss
 
         # Compute additional metrics
         with torch.no_grad():
@@ -162,6 +164,7 @@ class SAETrainer:
             "active_latents": active_latents,
             "l0_norm": l0_norm,
             "variance_explained": variance_explained,
+            "l1_coefficient": self.get_current_l1_coefficient(),
         }
 
     def step(self, batch: torch.Tensor) -> Dict[str, torch.Tensor]:
@@ -229,6 +232,14 @@ class SAETrainer:
 
         wandb.log(log_dict, step=self.current_step)
 
+    def get_current_l1_coefficient(self) -> float:
+        """Get the current L1 coefficient based on training progress"""
+        if self.current_step < self.l1_warmup_steps:
+            # Linear warmup from 0 to target L1 coefficient
+            return self.config.l1_coefficient * (self.current_step / max(1, self.l1_warmup_steps))
+        else:
+            return self.config.l1_coefficient
+
     def train(
         self,
         train_dataset: Dataset,
@@ -249,9 +260,24 @@ class SAETrainer:
         # Setup scheduler
         self.total_steps = len(train_dataloader) * self.config.epochs / self.config.grad_accumulation_steps
         warmup_steps = int(self.config.warmup_ratio * self.total_steps)
-        scheduler = get_linear_schedule_with_warmup(
-            self.optimizer, warmup_steps, self.total_steps
-        )
+        decay_start_step = int(0.8 * self.total_steps)
+        self.l1_warmup_steps = int(self.config.l1_warmup_ratio * self.total_steps / self.config.grad_accumulation_steps)
+
+        # Create custom scheduler: warmup -> constant -> linear decay
+        def lr_lambda(current_step: int):
+            if current_step < warmup_steps:
+                # Warmup phase: linear increase from 0 to 1
+                return float(current_step) / float(max(1, warmup_steps))
+            elif current_step < decay_start_step:
+                # Constant phase: stay at 1.0
+                return 1.0
+            else:
+                # Decay phase: linear decrease from 1 to 0
+                decay_steps = self.total_steps - decay_start_step
+                progress = (current_step - decay_start_step) / float(max(1, decay_steps))
+                return max(0.0, 1.0 - progress)
+        
+        scheduler = LambdaLR(self.optimizer, lr_lambda)
         
         self.checkpoint_intervals = [int(self.total_steps * p) for p in [0.01, 0.2, 0.4, 0.6, 0.8, 1.0]]
         next_checkpoint_idx = 0
