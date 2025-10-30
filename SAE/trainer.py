@@ -141,17 +141,16 @@ class SAETrainer:
         B, D = activations.shape
         _, L = latents.shape
         
-        # # --- 1. Reconstruction loss (compute more efficiently)
+        # # --- 1. Reconstruction loss
         diff = reconstructions - activations
-        reconstruction_loss = (diff * diff).sum() / (B * D)
+        reconstruction_loss = (diff * diff).sum()
+        reconstruction_loss = reconstruction_loss / (B * D)
 
         # --- 2. Weighted sparsity loss
         # This is the unweighted sparsity loss
         # l1_loss = latents.abs().sum() / (B * L)
         
         # This is the weighted sparsity loss as implemented here -> https://transformer-circuits.pub/2024/april-update/index.html
-        # Use cached decoder weight norms (updated after optimizer steps)
-        # Compute in-place to save memory: sum(|latents * W_d_l2norm|) / (B * L)
         l1_loss = torch.sum(torch.abs(latents * self.W_d_l2norm)) / (B * L)
 
         # Total loss
@@ -186,8 +185,7 @@ class SAETrainer:
         input_ids = torch.stack(batch['input_ids']).to(self.config.device)
         attention_mask = torch.stack(batch['attention_mask']).to(self.config.device)
 
-        # Use automatic mixed precision to reduce memory
-        with torch.cuda.amp.autocast(enabled=use_amp and self.use_amp):
+        with torch.amp.autocast(device_type=self.config.device, enabled=use_amp and self.use_amp):
             # Forward pass
             _ = self.language_model(input_ids, attention_mask)
             activations = self.collector.get_activations()
@@ -205,7 +203,7 @@ class SAETrainer:
         eval_losses = {}
 
         with torch.no_grad():
-            for batch in eval_dataloader:
+            for batch in tqdm(eval_dataloader, desc="Evaluating", leave=False):
                 loss_dict = self.step(batch, use_amp=self.use_amp)
 
                 for key, value in loss_dict.items():

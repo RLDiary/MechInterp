@@ -145,7 +145,7 @@ def load_model(model_path, config_path):
 
 def get_dataset(dataset_path):
     dataset = load_dataset(dataset_path, split='train')
-    dataset = dataset.train_test_split(test_size=0.01, shuffle=True, seed=42)
+    dataset = dataset.train_test_split(test_size=0.001, shuffle=True, seed=42)
     train_dataset, val_dataset = dataset['train'], dataset['test']
 
     for ds in [train_dataset, val_dataset]:
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         model_path="/home/ubuntu/MechInter/OneLayerModel/Models/TinyStories-1L-21M",
         config_path="/home/ubuntu/MechInter/OneLayerModel/OneLM.yaml"
         )
-    sae_model = SparseAutoEncoder(n_latents=131_072, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
+    sae_model = SparseAutoEncoder(n_latents=65536, n_inputs=4096, activation=nn.ReLU(), tied=False, normalize=False).to(device)
     trainer = SAETrainer(config=SAETrainingConfig(), autoencoder=sae_model, language_model=model, tokenizer=tokenizer, sampler=sampler, use_wandb=True)
 
     train_dataset, val_dataset = get_dataset('/home/ubuntu/MechInter/datasets/cache')
