@@ -19,12 +19,12 @@ from torch.optim.lr_scheduler import LambdaLR
 @dataclass
 class SAETrainingConfig:
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    batch_size: int = 25
+    batch_size: int = 8
     epochs: int = 1
     lr: float = 1e-4
     weight_decay: float = 1e-2
     wandb_project: str = "1L21M SAE Training"
-    wandb_name: Optional[str] = 'L1-Coefficient-5'
+    wandb_name: Optional[str] = 'Revised Training Architecture'
     l1_coefficient: float = 5
     l1_warmup_ratio: float = 0.05 # Warmup ratio for the l1_coefficient
     grad_accumulation_steps: int = 12
@@ -77,6 +77,13 @@ class SAETrainer:
         self.data_collator = DataCollator(max_length=128)
         self.optimizer = torch.optim.Adam(self.autoencoder.parameters(), lr=config.lr)
         
+        # Initialize mixed precision training
+        self.scaler = torch.amp.GradScaler('cuda') if config.device == 'cuda' else None
+        self.use_amp = config.device == 'cuda'
+
+        # Cache for decoder weight norms (updated after optimizer steps)
+        self.W_d_l2norm = None
+        self._update_decoder_norms()
 
         # Training state
         self.next_checkpoint_idx = 0
@@ -108,6 +115,12 @@ class SAETrainer:
             )
             wandb.watch(self.autoencoder, log="all", log_freq=config.log_every)
 
+    def _update_decoder_norms(self):
+        """Update cached decoder weight norms. Call after optimizer steps."""
+        with torch.no_grad():
+            W_d = self.autoencoder.decoder.weight  # [n_inputs, n_latents]
+            self.W_d_l2norm = torch.linalg.norm(W_d, dim=0, keepdim=True).to(self.config.device)  # [1, n_latents]
+
     def compute_loss(
         self,
         activations: torch.Tensor,
@@ -128,18 +141,18 @@ class SAETrainer:
         B, D = activations.shape
         _, L = latents.shape
         
-        # # --- 1. Reconstruction loss
-        reconstruction_loss = ((reconstructions - activations) ** 2).sum() / (B * D)
+        # # --- 1. Reconstruction loss (compute more efficiently)
+        diff = reconstructions - activations
+        reconstruction_loss = (diff * diff).sum() / (B * D)
 
         # --- 2. Weighted sparsity loss
         # This is the unweighted sparsity loss
         # l1_loss = latents.abs().sum() / (B * L)
         
         # This is the weighted sparsity loss as implemented here -> https://transformer-circuits.pub/2024/april-update/index.html
-        # Weighted sparsity loss coefficients
-        self.W_d = self.autoencoder.decoder.weight
-        self.W_d_l2norm = torch.linalg.norm(self.W_d, dim=0).unsqueeze(0).to(self.config.device)
-        l1_loss = (latents * self.W_d_l2norm).abs().sum() / (B * L)
+        # Use cached decoder weight norms (updated after optimizer steps)
+        # Compute in-place to save memory: sum(|latents * W_d_l2norm|) / (B * L)
+        l1_loss = torch.sum(torch.abs(latents * self.W_d_l2norm)) / (B * L)
 
         # Total loss
         total_loss = reconstruction_loss + self.get_current_l1_coefficient() * l1_loss
@@ -164,24 +177,25 @@ class SAETrainer:
             "active_latents": active_latents,
             "l0_norm": l0_norm,
             "variance_explained": variance_explained,
-            "l1_coefficient": self.get_current_l1_coefficient(),
+            "l1_coefficient": torch.tensor(self.get_current_l1_coefficient()),
         }
 
-    def step(self, batch: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def step(self, batch: torch.Tensor, use_amp: bool = True) -> Dict[str, torch.Tensor]:
         """Single training step"""
 
         input_ids = torch.stack(batch['input_ids']).to(self.config.device)
         attention_mask = torch.stack(batch['attention_mask']).to(self.config.device)
 
-        # Forward pass
+        # Use automatic mixed precision to reduce memory
+        with torch.cuda.amp.autocast(enabled=use_amp and self.use_amp):
+            # Forward pass
+            _ = self.language_model(input_ids, attention_mask)
+            activations = self.collector.get_activations()
+            activations = activations.to(self.config.device)
+            latents_pre_act, latents, reconstructions = self.autoencoder(activations)
 
-        _ = self.language_model(input_ids, attention_mask)
-        activations = self.collector.get_activations()
-        activations = activations.to(self.config.device)
-        latents_pre_act, latents, reconstructions = self.autoencoder(activations)
-
-        # Compute loss
-        loss_dict = self.compute_loss(activations, reconstructions, latents)
+            # Compute loss
+            loss_dict = self.compute_loss(activations, reconstructions, latents)
 
         return loss_dict
 
@@ -192,7 +206,7 @@ class SAETrainer:
 
         with torch.no_grad():
             for batch in eval_dataloader:
-                loss_dict = self.step(batch)
+                loss_dict = self.step(batch, use_amp=self.use_amp)
 
                 for key, value in loss_dict.items():
                     if key not in eval_losses:
@@ -292,8 +306,8 @@ class SAETrainer:
             progress_bar = tqdm(total=self.total_steps, desc=f'Epoch {self.current_epoch}')
 
             for batch_idx, batch in enumerate(train_dataloader):
-                # Forward pass
-                loss_dict = self.step(batch)
+                # Forward pass with mixed precision
+                loss_dict = self.step(batch, use_amp=self.use_amp)
                 loss = loss_dict["total_loss"]
 
                 # Accumulate losses for logging
@@ -302,18 +316,36 @@ class SAETrainer:
                         epoch_losses[key] = []
                     epoch_losses[key].append(value.item())
 
-                # Backward pass
-                loss.backward()
+                # Backward pass with gradient scaling for mixed precision
+                if self.use_amp and self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
 
                 # Gradient accumulation
                 if (batch_idx + 1) % self.config.grad_accumulation_steps == 0:
-                    # Gradient clipping
-                    torch.nn.utils.clip_grad_norm_(self.autoencoder.parameters(), self.config.max_grad_norm)
-                    self.optimizer.step()
+                    # Gradient clipping and optimizer step with mixed precision support
+                    if self.use_amp and self.scaler is not None:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.autoencoder.parameters(), self.config.max_grad_norm)
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        torch.nn.utils.clip_grad_norm_(self.autoencoder.parameters(), self.config.max_grad_norm)
+                        self.optimizer.step()
+                    
                     if scheduler:
                         scheduler.step()
-                    self.optimizer.zero_grad()
+                    self.optimizer.zero_grad(set_to_none=True)  # set_to_none=True saves memory
+                    
+                    # Update decoder norms after parameter update
+                    self._update_decoder_norms()
+                    
                     self.current_step += 1
+                    
+                    # Clear CUDA cache periodically to prevent fragmentation
+                    if self.current_step % 100 == 0:
+                        torch.cuda.empty_cache()
                     
 
                     # Logging
